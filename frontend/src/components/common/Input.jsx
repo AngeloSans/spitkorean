@@ -105,18 +105,7 @@ const Input = React.forwardRef(({
         </label>
       )}
       {/* 라벨 */}
-      {label && (
-        <label 
-          htmlFor={inputId}
-          className={clsx(
-            'block text-sm font-medium text-gray-700 mb-1',
-            required && "after:content-['*'] after:text-error-500 after:ml-1",
-            labelClassName
-          )}
-        >
-          {label}
-        </label>
-      )}
+
       
       {/* Input 컨테이너 */}
       <div className="relative">
