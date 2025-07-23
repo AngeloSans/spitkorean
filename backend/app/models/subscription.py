@@ -59,23 +59,24 @@ class Subscription:
     
     @classmethod
     async def find_active_by_user(cls, db, user_id):
-        """사용자의 활성 구독 목록 조회
-        
-        Args:
-            db: 데이터베이스 연결
-            user_id: 사용자 ID
-            
-        Returns:
-            list: 활성 구독 목록
-        """
+        """Busca as assinaturas ativas embutidas no usuário"""
         if isinstance(user_id, str):
             user_id = ObjectId(user_id)
-        
-        cursor = db[cls.collection_name].find({
-            "user_id": user_id,
-            "status": "active"
-        })
-        return await cursor.to_list(length=None)
+
+        user = await db["users"].find_one({"_id": user_id}, {"subscriptions": 1})
+        if not user or "subscriptions" not in user:
+            return []
+
+        active_subscriptions = []
+        for s in user["subscriptions"]:
+            if isinstance(s, dict):
+                if s.get("status") == "active":
+                    active_subscriptions.append(s)
+            else:
+                print(f"Subscription with unexpected type: {type(s)} - value: {s}")
+
+        return active_subscriptions
+
     
     @classmethod
     async def cancel(cls, db, subscription_id):

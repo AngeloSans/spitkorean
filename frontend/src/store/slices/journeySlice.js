@@ -1,430 +1,412 @@
-// src/store/slices/journeySlice.js
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { 
-  getJourneyContent, 
-  submitJourneyReading, 
-  getJourneyProgress, 
-  getJourneyUsage 
-} from '../../api/journey';
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit"
+import { getJourneyContent, submitJourneyReading, getJourneyProgress, getJourneyUsage } from "../../api/journey.js"
 
-// 비동기 액션 생성 (Thunk)
-
-/**
- * 리딩 콘텐츠 조회
- */
+// Async actions (thunks)
+/** * Fetch reading content */
 export const fetchJourneyContent = createAsyncThunk(
-  'journey/fetchContent',
-  async ({ level = 'level1', type = 'reading' }, { rejectWithValue }) => {
+  "journey/fetchContent",
+  async ({ level = "level1", type = "reading" }, { rejectWithValue }) => {
     try {
-      const response = await getJourneyContent(level, type);
+      const response = await getJourneyContent(level, type)
+      console.log("API Response in thunk:", response.data)
+
+      // FIX: Return full structure
       return {
-        content: response.data.content,
-        remaining_usage: response.data.remaining_usage,
+        ...response.data,
         level,
-        type
-      };
+        type,
+      }
     } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || '콘텐츠를 불러오는데 실패했습니다.'
-      );
+      return rejectWithValue(error.response?.data?.message || "Failed to load content.")
     }
-  }
-);
+  },
+)
 
-/**
- * 리딩 결과 제출
- */
-export const submitReading = createAsyncThunk(
-  'journey/submitReading',
-  async (formData, { rejectWithValue }) => {
-    try {
-      const response = await submitJourneyReading(formData);
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || '결과 제출에 실패했습니다.'
-      );
-    }
+/** * Submit reading result */
+export const submitReading = createAsyncThunk("journey/submitReading", async (formData, { rejectWithValue }) => {
+  try {
+    const response = await submitJourneyReading(formData)
+    return response.data
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || "Failed to submit result.")
   }
-);
+})
 
-/**
- * 진행 상황 조회
- */
-export const fetchProgress = createAsyncThunk(
-  'journey/fetchProgress',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await getJourneyProgress();
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || '진행 상황을 불러오는데 실패했습니다.'
-      );
-    }
+/** * Fetch progress */
+export const fetchProgress = createAsyncThunk("journey/fetchProgress", async (_, { rejectWithValue }) => {
+  try {
+    const response = await getJourneyProgress()
+    return response.data
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || "Failed to load progress.")
   }
-);
+})
 
-/**
- * 사용량 조회
- */
-export const fetchUsage = createAsyncThunk(
-  'journey/fetchUsage',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await getJourneyUsage();
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(
-        error.response?.data?.message || '사용량 정보를 불러오는데 실패했습니다.'
-      );
-    }
+/** * Fetch usage */
+export const fetchUsage = createAsyncThunk("journey/fetchUsage", async (_, { rejectWithValue }) => {
+  try {
+    const response = await getJourneyUsage()
+    return response.data
+  } catch (error) {
+    return rejectWithValue(error.response?.data?.message || "Failed to load usage information.")
   }
-);
+})
 
-// 초기 상태
+// Initial state
 const initialState = {
-  // 현재 콘텐츠
+  // Current content
   currentContent: null,
-  contentLevel: 'level1',
-  contentType: 'reading',
-  
-  // 읽기 세션 상태
+  contentLevel: "level1",
+  contentType: "reading",
+
+  // Reading session state
   session: {
     isActive: false,
     currentSentenceIndex: 0,
     completedSentences: [],
     startTime: null,
-    totalSentences: 0
+    totalSentences: 0,
   },
-  
-  // 재생 컨트롤
+
+  // Playback controls
   playback: {
     isPlaying: false,
     speed: 1.0,
     volume: 1.0,
     isMuted: false,
-    autoAdvance: true
+    autoAdvance: true,
   },
-  
-  // 녹음 상태
+
+  // Recording state
   recording: {
     isRecording: false,
     audioBlob: null,
-    duration: 0
+    duration: 0,
   },
-  
-  // 발음 평가
+
+  // Pronunciation evaluation
   pronunciation: {
     currentScore: null,
     history: [],
     analysis: null,
-    feedback: null
+    feedback: null,
   },
-  
-  // 진행 상황
+
+  // Progress tracking
   progress: {
     history: [],
     level_stats: {},
     date_stats: [],
     total_readings: 0,
     total_sentences: 0,
-    avg_pronunciation: 0
+    avg_pronunciation: 0,
   },
-  
-  // 사용량 정보
+
+  // Usage data
   usage: {
     has_subscription: false,
     daily_limit: 20,
     remaining: 0,
-    reset_at: null
+    reset_at: null,
   },
-  
-  // UI 상태
+
+  // UI state
   ui: {
     showGuide: false,
     showTranslation: false,
     showJamo: false,
     showAdvancedControls: false,
-    selectedCharacter: null
+    selectedCharacter: null,
   },
-  
-  // 로딩 및 에러 상태
+
+  // Loading & error states
   loading: {
     content: false,
     submit: false,
     progress: false,
-    usage: false
+    usage: false,
   },
-  
   error: {
     content: null,
     submit: null,
     progress: null,
-    usage: null
-  }
-};
+    usage: null,
+  },
+}
 
-// 슬라이스 생성
+// Slice creation
 const journeySlice = createSlice({
-  name: 'journey',
+  name: "journey",
   initialState,
   reducers: {
-    // 세션 관리
+    // Session management
     startSession: (state, action) => {
-      const { content } = action.payload;
+      const { content } = action.payload
+      console.log("Starting session with content:", content)
+
       state.session = {
         isActive: true,
         currentSentenceIndex: 0,
-        completedSentences: new Set(),
+        completedSentences: [],
         startTime: Date.now(),
-        totalSentences: content?.content?.sentences?.length || 0
-      };
-      state.pronunciation.currentScore = null;
-      state.pronunciation.analysis = null;
+        totalSentences: content?.content?.sentences?.length || 0,
+      }
+      state.pronunciation.currentScore = null
+      state.pronunciation.analysis = null
     },
-    
+
     endSession: (state) => {
-      state.session.isActive = false;
-      state.playback.isPlaying = false;
-      state.recording.isRecording = false;
+      state.session.isActive = false
+      state.playback.isPlaying = false
+      state.recording.isRecording = false
     },
-    
-    // 문장 네비게이션
+
+    // Sentence navigation
     setCurrentSentence: (state, action) => {
-      state.session.currentSentenceIndex = action.payload;
-      state.pronunciation.currentScore = null;
-      state.pronunciation.analysis = null;
+      state.session.currentSentenceIndex = action.payload
+      state.pronunciation.currentScore = null
+      state.pronunciation.analysis = null
     },
-    
+
     goToNextSentence: (state) => {
-      const maxIndex = state.session.totalSentences - 1;
+      const maxIndex = state.session.totalSentences - 1
       if (state.session.currentSentenceIndex < maxIndex) {
-        state.session.currentSentenceIndex += 1;
-        state.pronunciation.currentScore = null;
-        state.pronunciation.analysis = null;
+        state.session.currentSentenceIndex += 1
+        state.pronunciation.currentScore = null
+        state.pronunciation.analysis = null
       }
     },
-    
+
     goToPreviousSentence: (state) => {
       if (state.session.currentSentenceIndex > 0) {
-        state.session.currentSentenceIndex -= 1;
-        state.pronunciation.currentScore = null;
-        state.pronunciation.analysis = null;
+        state.session.currentSentenceIndex -= 1
+        state.pronunciation.currentScore = null
+        state.pronunciation.analysis = null
       }
     },
-    
+
     markSentenceCompleted: (state, action) => {
-      const index = action.payload;
-      if(!state.session.completedSentences.includes(index)){
-        state.session.completedSentences.push(index);
-      } 
+      const index = action.payload
+      if (!state.session.completedSentences.includes(index)) {
+        state.session.completedSentences.push(index)
+      }
     },
-    
-    // 재생 컨트롤
+
+    // Playback controls
     setPlaybackState: (state, action) => {
-      state.playback.isPlaying = action.payload;
+      state.playback.isPlaying = action.payload
     },
-    
+
     setPlaybackSpeed: (state, action) => {
-      state.playback.speed = action.payload;
+      state.playback.speed = action.payload
     },
-    
+
     setVolume: (state, action) => {
-      state.playback.volume = action.payload;
-      state.playback.isMuted = action.payload === 0;
+      state.playback.volume = action.payload
+      state.playback.isMuted = action.payload === 0
     },
-    
+
     toggleMute: (state) => {
-      state.playback.isMuted = !state.playback.isMuted;
+      state.playback.isMuted = !state.playback.isMuted
     },
-    
+
     setAutoAdvance: (state, action) => {
-      state.playback.autoAdvance = action.payload;
+      state.playback.autoAdvance = action.payload
     },
-    
-    // 녹음 관리
+
+    // Recording management
     startRecording: (state) => {
       state.recording = {
         isRecording: true,
         audioBlob: null,
-        duration: 0
-      };
+        duration: 0,
+      }
     },
-    
+
     stopRecording: (state, action) => {
       state.recording = {
         isRecording: false,
         audioBlob: action.payload.audioBlob,
-        duration: action.payload.duration
-      };
+        duration: action.payload.duration,
+      }
     },
-    
+
     clearRecording: (state) => {
       state.recording = {
         isRecording: false,
         audioBlob: null,
-        duration: 0
-      };
+        duration: 0,
+      }
     },
-    
-    // 발음 평가
+
+    // Pronunciation evaluation
     setPronunciationScore: (state, action) => {
-      const { score, analysis, feedback } = action.payload;
-      state.pronunciation.currentScore = score;
-      state.pronunciation.analysis = analysis;
-      state.pronunciation.feedback = feedback;
-      
-      // 히스토리에 추가
+      const { score, analysis, feedback } = action.payload
+      state.pronunciation.currentScore = score
+      state.pronunciation.analysis = analysis
+      state.pronunciation.feedback = feedback
+
       state.pronunciation.history.push({
         score,
         timestamp: Date.now(),
-        sentenceIndex: state.session.currentSentenceIndex
-      });
-      
-      // 히스토리 크기 제한 (최대 10개)
+        sentenceIndex: state.session.currentSentenceIndex,
+      })
+
       if (state.pronunciation.history.length > 10) {
-        state.pronunciation.history.shift();
+        state.pronunciation.history.shift()
       }
     },
-    
+
     clearPronunciationData: (state) => {
-      state.pronunciation.currentScore = null;
-      state.pronunciation.analysis = null;
-      state.pronunciation.feedback = null;
+      state.pronunciation.currentScore = null
+      state.pronunciation.analysis = null
+      state.pronunciation.feedback = null
     },
-    
-    // UI 상태 관리
+
+    // UI state management
     toggleGuide: (state) => {
-      state.ui.showGuide = !state.ui.showGuide;
+      state.ui.showGuide = !state.ui.showGuide
     },
-    
+
     toggleTranslation: (state) => {
-      state.ui.showTranslation = !state.ui.showTranslation;
+      state.ui.showTranslation = !state.ui.showTranslation
     },
-    
+
     toggleJamo: (state) => {
-      state.ui.showJamo = !state.ui.showJamo;
+      state.ui.showJamo = !state.ui.showJamo
     },
-    
+
     toggleAdvancedControls: (state) => {
-      state.ui.showAdvancedControls = !state.ui.showAdvancedControls;
+      state.ui.showAdvancedControls = !state.ui.showAdvancedControls
     },
-    
+
     setSelectedCharacter: (state, action) => {
-      state.ui.selectedCharacter = action.payload;
+      state.ui.selectedCharacter = action.payload
     },
-    
-    // 에러 클리어
+
+    // Clear errors
     clearContentError: (state) => {
-      state.error.content = null;
+      state.error.content = null
     },
-    
+
     clearSubmitError: (state) => {
-      state.error.submit = null;
+      state.error.submit = null
     },
-    
+
     clearProgressError: (state) => {
-      state.error.progress = null;
+      state.error.progress = null
     },
-    
+
     clearUsageError: (state) => {
-      state.error.usage = null;
+      state.error.usage = null
     },
-    
-    // 전체 상태 리셋
-    resetJourneyState: () => initialState
+
+    // Reset all state
+    resetJourneyState: () => initialState,
+
+    // NEW: Manually set content (for testing)
+    setContent: (state, action) => {
+      console.log("Setting content directly:", action.payload)
+      state.currentContent = action.payload
+      state.loading.content = false
+      state.error.content = null
+    },
   },
-  
+
   extraReducers: (builder) => {
-    // 콘텐츠 조회
+    // Fetch content
     builder
       .addCase(fetchJourneyContent.pending, (state) => {
-        state.loading.content = true;
-        state.error.content = null;
+        state.loading.content = true
+        state.error.content = null
       })
       .addCase(fetchJourneyContent.fulfilled, (state, action) => {
-        state.loading.content = false;
-        state.currentContent = action.payload.content;
-        state.contentLevel = action.payload.level;
-        state.contentType = action.payload.type;
-        state.usage.remaining = action.payload.remaining_usage;
-        
-        // 레벨별 기본 설정 적용
+        console.log("fetchJourneyContent.fulfilled payload:", action.payload)
+        state.loading.content = false
+
+        // MAIN FIX: Properly process structure
+        if (action.payload.content) {
+          state.currentContent = action.payload.content
+        } else {
+          state.currentContent = action.payload
+        }
+
+        state.contentLevel = action.payload.level
+        state.contentType = action.payload.type
+
+        if (action.payload.remaining_usage !== undefined) {
+          state.usage.remaining = action.payload.remaining_usage
+        }
+
+        console.log("Content set to:", state.currentContent)
+
+        // Apply default settings by level
         const levelConfigs = {
           level1: { speed: 0.5, showJamo: true, autoAdvance: true },
           level2: { speed: 0.8, showJamo: false, autoAdvance: true },
           level3: { speed: 1.0, showJamo: false, autoAdvance: false },
-          level4: { speed: 1.2, showJamo: false, autoAdvance: false }
-        };
-        
-        const config = levelConfigs[action.payload.level] || levelConfigs.level1;
-        state.playback.speed = config.speed;
-        state.playback.autoAdvance = config.autoAdvance;
-        state.ui.showJamo = config.showJamo;
+          level4: { speed: 1.2, showJamo: false, autoAdvance: false },
+        }
+
+        const config = levelConfigs[action.payload.level] || levelConfigs.level1
+        state.playback.speed = config.speed
+        state.playback.autoAdvance = config.autoAdvance
+        state.ui.showJamo = config.showJamo
       })
       .addCase(fetchJourneyContent.rejected, (state, action) => {
-        state.loading.content = false;
-        state.error.content = action.payload;
-      });
-    
-    // 결과 제출
+        state.loading.content = false
+        state.error.content = action.payload
+      })
+
     builder
       .addCase(submitReading.pending, (state) => {
-        state.loading.submit = true;
-        state.error.submit = null;
+        state.loading.submit = true
+        state.error.submit = null
       })
       .addCase(submitReading.fulfilled, (state, action) => {
-        state.loading.submit = false;
-        
-        // 제출 성공 시 세션 종료
-        state.session.isActive = false;
-        state.playback.isPlaying = false;
-        state.recording.isRecording = false;
-        
-        // 사용량 업데이트
+        state.loading.submit = false
+        state.session.isActive = false
+        state.playback.isPlaying = false
+        state.recording.isRecording = false
         if (state.usage.remaining > 0) {
-          state.usage.remaining -= 1;
+          state.usage.remaining -= 1
         }
       })
       .addCase(submitReading.rejected, (state, action) => {
-        state.loading.submit = false;
-        state.error.submit = action.payload;
-      });
-    
-    // 진행 상황 조회
+        state.loading.submit = false
+        state.error.submit = action.payload
+      })
+
     builder
       .addCase(fetchProgress.pending, (state) => {
-        state.loading.progress = true;
-        state.error.progress = null;
+        state.loading.progress = true
+        state.error.progress = null
       })
       .addCase(fetchProgress.fulfilled, (state, action) => {
-        state.loading.progress = false;
-        state.progress = action.payload;
+        state.loading.progress = false
+        state.progress = action.payload
       })
       .addCase(fetchProgress.rejected, (state, action) => {
-        state.loading.progress = false;
-        state.error.progress = action.payload;
-      });
-    
-    // 사용량 조회
+        state.loading.progress = false
+        state.error.progress = action.payload
+      })
+
     builder
       .addCase(fetchUsage.pending, (state) => {
-        state.loading.usage = true;
-        state.error.usage = null;
+        state.loading.usage = true
+        state.error.usage = null
       })
       .addCase(fetchUsage.fulfilled, (state, action) => {
-        state.loading.usage = false;
-        state.usage = action.payload;
+        state.loading.usage = false
+        state.usage = action.payload
       })
       .addCase(fetchUsage.rejected, (state, action) => {
-        state.loading.usage = false;
-        state.error.usage = action.payload;
-      });
-  }
-});
+        state.loading.usage = false
+        state.error.usage = action.payload
+      })
+  },
+})
 
-// 액션 내보내기
 export const {
   startSession,
   endSession,
@@ -451,61 +433,71 @@ export const {
   clearSubmitError,
   clearProgressError,
   clearUsageError,
-  resetJourneyState
-} = journeySlice.actions;
+  resetJourneyState,
+  setContent,
+} = journeySlice.actions
 
-// 선택자 (Selectors)
-export const selectJourneyState = (state) => state.journey;
-export const selectCurrentContent = (state) => state.journey.currentContent;
-export const selectSession = (state) => state.journey.session;
-export const selectPlayback = (state) => state.journey.playback;
-export const selectRecording = (state) => state.journey.recording;
-export const selectPronunciation = (state) => state.journey.pronunciation;
-export const selectProgress = (state) => state.journey.progress;
-export const selectUsage = (state) => state.journey.usage;
-export const selectUI = (state) => state.journey.ui;
-export const selectLoading = (state) => state.journey.loading;
-export const selectErrors = (state) => state.journey.error;
+// Selectors
+export const selectJourneyState = (state) => state.journey
+export const selectCurrentContent = (state) => state.journey.currentContent
+export const selectSession = (state) => state.journey.session
+export const selectPlayback = (state) => state.journey.playback
+export const selectRecording = (state) => state.journey.recording
+export const selectPronunciation = (state) => state.journey.pronunciation
+export const selectProgress = (state) => state.journey.progress
+export const selectUsage = (state) => state.journey.usage
+export const selectUI = (state) => state.journey.ui
+export const selectLoading = (state) => state.journey.loading
+export const selectErrors = (state) => state.journey.error
 
-// 계산된 선택자
 export const selectCurrentSentence = (state) => {
-  const content = selectCurrentContent(state);
-  const session = selectSession(state);
-  return content?.content?.sentences?.[session.currentSentenceIndex] || null;
-};
+  const content = selectCurrentContent(state)
+  const session = selectSession(state)
+
+  console.log("selectCurrentSentence - content:", content)
+  console.log("selectCurrentSentence - session:", session)
+
+  const sentence =
+    content?.content?.sentences?.[session.currentSentenceIndex] ||
+    content?.sentences?.[session.currentSentenceIndex] ||
+    null
+
+  console.log("selectCurrentSentence - result:", sentence)
+  return sentence
+}
 
 export const selectSessionProgress = (state) => {
-  const session = selectSession(state);
-  if (session.totalSentences === 0) return 0;
-  return (session.completedSentences.size / session.totalSentences) * 100;
-};
+  const session = selectSession(state)
+  if (session.totalSentences === 0) return 0
+  return (session.completedSentences.length / session.totalSentences) * 100
+}
 
 export const selectCanGoNext = (state) => {
-  const session = selectSession(state);
-  return session.currentSentenceIndex < session.totalSentences - 1;
-};
+  const session = selectSession(state)
+  return session.currentSentenceIndex < session.totalSentences - 1
+}
 
 export const selectCanGoPrevious = (state) => {
-  const session = selectSession(state);
-  return session.currentSentenceIndex > 0;
-};
+  const session = selectSession(state)
+  return session.currentSentenceIndex > 0
+}
 
 export const selectHasRemainingUsage = (state) => {
-  const usage = selectUsage(state);
-  return usage.remaining > 0;
-};
+  const usage = selectUsage(state)
+  return usage.remaining > 0
+}
 
 export const selectIsSessionComplete = (state) => {
-  const session = selectSession(state);
-  return session.completedSentences.size === session.totalSentences;
-};
+  const session = selectSession(state)
+  return session.completedSentences.length === session.totalSentences
+}
 
 export const selectAverageScore = (state) => {
-  const history = selectPronunciation(state).history;
-  if (history.length === 0) return 0;
-  const sum = history.reduce((acc, item) => acc + item.score, 0);
-  return Math.round(sum / history.length);
-};
+  const history = selectPronunciation(state).history
+  if (history.length === 0) return 0
+  const sum = history.reduce((acc, item) => acc + item.score, 0)
+  return Math.round(sum / history.length)
+}
 
-// 리듀서 내보내기
-export default journeySlice.reducer;
+// Export reducer
+export default journeySlice.reducer

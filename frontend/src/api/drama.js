@@ -1,4 +1,4 @@
-import apiClient from './index';
+import apiClient from "./index"
 
 /**
  * Drama Builder API
@@ -9,12 +9,47 @@ import apiClient from './index';
  * 드라마 문장 목록 조회
  * GET /api/v1/drama/sentences?level={level}
  * @param {string} level - 레벨 (beginner, intermediate, advanced)
+ * @param {number} num_sentences - Number of sentences to fetch
  * @returns {Promise} 문장 목록
  */
-export const getDramaSentences = async (level = 'beginner') => {
-  const response = await apiClient.get(`/drama/sentences?level=${level}`);
-  return response.data;
-};
+export const getDramaSentences = async (level = "beginner", num_sentences = 5) => {
+  try {
+    console.log("Fetching drama sentences:", { level, num_sentences })
+
+    // Usar GET conforme o backend espera
+    const response = await apiClient.get(`/drama/sentences?level=${level}`)
+
+    console.log("Drama sentences response:", response.data)
+
+    // A resposta completa do backend, que inclui status, message e data
+    const fullApiResponse = response.data
+
+    // Verificar se a resposta tem a estrutura esperada
+    if (!fullApiResponse.data) {
+      console.error("Invalid response structure:", fullApiResponse)
+      throw new Error("Invalid response format from backend")
+    }
+
+    // Retornar os dados conforme esperado pelo slice
+    return fullApiResponse.data
+  } catch (error) {
+    console.error("Error fetching drama sentences:", error)
+
+    if (error.response?.status === 401) {
+      throw new Error("인증 토큰이 필요합니다")
+    }
+
+    if (error.response?.status === 403) {
+      throw new Error("Drama Builder 구독이 필요합니다")
+    }
+
+    if (error.response?.status === 429) {
+      throw new Error("오늘의 사용량을 초과했습니다")
+    }
+
+    throw new Error(error.response?.data?.message || "문장을 불러오는데 실패했습니다")
+  }
+}
 
 /**
  * 문장 구성 확인
@@ -27,9 +62,28 @@ export const getDramaSentences = async (level = 'beginner') => {
  * @returns {Promise} 체크 결과
  */
 export const checkSentence = async (data) => {
-  const response = await apiClient.post('/drama/check', data);
-  return response.data;
-};
+  try {
+    console.log("Checking sentence:", data)
+
+    const response = await apiClient.post("/drama/check", data)
+
+    console.log("Check sentence response:", response.data)
+
+    return response.data.data || response.data
+  } catch (error) {
+    console.error("Error checking sentence:", error)
+
+    if (error.response?.status === 401) {
+      throw new Error("인증 토큰이 필요합니다")
+    }
+
+    if (error.response?.status === 403) {
+      throw new Error("Drama Builder 구독이 필요합니다")
+    }
+
+    throw new Error(error.response?.data?.message || "답안 확인에 실패했습니다")
+  }
+}
 
 /**
  * 드라마 진행 상황 조회
@@ -37,115 +91,69 @@ export const checkSentence = async (data) => {
  * @returns {Promise} 진행 상황
  */
 export const getDramaProgress = async () => {
-  const response = await apiClient.get('/drama/progress');
-  return response.data;
-};
+  try {
+    console.log("Fetching drama progress")
+
+    const response = await apiClient.get("/drama/progress")
+
+    console.log("Drama progress response:", response.data)
+
+    return response.data.data || response.data
+  } catch (error) {
+    console.error("Error fetching drama progress:", error)
+
+    if (error.response?.status === 401) {
+      throw new Error("인증 토큰이 필요합니다")
+    }
+
+    if (error.response?.status === 403) {
+      throw new Error("Drama Builder 구독이 필요합니다")
+    }
+
+    throw new Error(error.response?.data?.message || "진행 상황을 불러오는데 실패했습니다")
+  }
+}
 
 /**
- * Drama 서비스 사용량 조회
+ * Drama 사용량 조회
  * GET /api/v1/drama/usage
  * @returns {Promise} 사용량 정보
  */
 export const getDramaUsage = async () => {
-  const response = await apiClient.get('/drama/usage');
-  return response.data;
-};
+  try {
+    console.log("Fetching drama usage")
 
-// 백엔드 응답 구조에 맞는 타입 정의 (참고용)
-/**
- * 드라마 문장 목록 응답 구조
- * {
- *   "status": "success",
- *   "message": "드라마 문장을 성공적으로 조회했습니다",
- *   "data": {
- *     "sentences": [
- *       {
- *         "id": "sentence_uuid",
- *         "content": "문장 내용",
- *         "translation": "번역",
- *         "grammar_points": [],
- *         "drama_title": "드라마 제목",
- *         "drama_id": "drama_object_id"
- *       }
- *     ],
- *     "level": "beginner",
- *     "total": 5,
- *     "remaining_usage": 15
- *   }
- * }
- */
+    const response = await apiClient.get("/drama/usage")
 
-/**
- * 문장 체크 응답 구조
- * {
- *   "status": "success",
- *   "message": "문장 확인이 완료되었습니다",
- *   "data": {
- *     "is_correct": true,
- *     "correct_sentence": "정답 문장",
- *     "similar_sentences": ["유사 문장1", "유사 문장2", ...],
- *     "grammar_points": [
- *       {
- *         "element": "문법 요소",
- *         "explanation": "설명",
- *         "example": "예시"
- *       }
- *     ],
- *     "xp_earned": 10
- *   }
- * }
- */
+    console.log("Drama usage response:", response.data)
 
-/**
- * 진행 상황 응답 구조
- * {
- *   "status": "success",
- *   "message": "진행 상황을 성공적으로 조회했습니다",
- *   "data": {
- *     "progress": [
- *       {
- *         "drama_id": "drama_object_id",
- *         "drama_title": "드라마 제목",
- *         "level": "beginner",
- *         "completed_sentences": 10,
- *         "total_sentences": 15,
- *         "completion_rate": 66.67,
- *         "last_updated": "2024-01-01T00:00:00"
- *       }
- *     ],
- *     "level_stats": {
- *       "beginner": {
- *         "completed": 20,
- *         "total": 30,
- *         "completion_rate": 66.7
- *       },
- *       "intermediate": {
- *         "completed": 15,
- *         "total": 25,
- *         "completion_rate": 60.0
- *       },
- *       "advanced": {
- *         "completed": 10,
- *         "total": 20,
- *         "completion_rate": 50.0
- *       }
- *     },
- *     "total_completed": 45
- *   }
- * }
- */
+    return response.data.data || response.data
+  } catch (error) {
+    console.error("Error fetching drama usage:", error)
 
-/**
- * 사용량 응답 구조
- * {
- *   "status": "success",
- *   "message": "사용량 정보를 성공적으로 조회했습니다",
- *   "data": {
- *     "product": "drama",
- *     "has_subscription": true,
- *     "daily_limit": 20,
- *     "remaining": 15,
- *     "reset_at": "2024-01-02T00:00:00"
- *   }
- * }
- */
+    if (error.response?.status === 401) {
+      throw new Error("인증 토큰이 필요합니다")
+    }
+
+    if (error.response?.status === 403) {
+      throw new Error("Drama Builder 구독이 필요합니다")
+    }
+
+    throw new Error(error.response?.data?.message || "사용량 정보를 불러오는데 실패했습니다")
+  }
+}
+
+// Função para testar a conectividade da API
+export const testDramaAPI = async () => {
+  try {
+    console.log("Testing Drama API connectivity...")
+
+    const response = await apiClient.get("/drama/usage")
+
+    console.log("Drama API test successful:", response.status)
+    return true
+  } catch (error) {
+    console.error("Drama API test failed:", error)
+    return false
+  }
+}

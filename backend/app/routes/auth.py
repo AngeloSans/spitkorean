@@ -123,8 +123,8 @@ async def get_current_user():
     # 구독 상태 조회
     subscriptions = []
     for sub in user.get("subscriptions", []):
-        if sub.get("status") == "active":
-            subscriptions.append(sub["product"])
+        if isinstance(sub, dict) and sub.get("status") == "active":
+            subscriptions.append(sub.get("product"))
     
     return api_response({
         "id": str(user["_id"]),
@@ -181,7 +181,6 @@ async def update_profile():
         "updated_fields": list(update_data.keys())
     }, "프로필이 성공적으로 업데이트되었습니다")
 
-##logout simple route
 
 @auth_routes.route('/logout', methods=['POST'])
 async def logout():

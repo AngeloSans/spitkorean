@@ -1,189 +1,148 @@
-// src/pages/journey/JourneyHome.jsx
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
-import { 
-  BookOpen, 
-  Mic, 
-  TrendingUp, 
-  Clock,
-  Play,
-  Volume2,
-  Star,
-  Target,
-  Zap,
-  Calendar,
-  Award,
-  Headphones
-} from 'lucide-react';
-import Button, { PrimaryButton, OutlineButton } from '../../components/common/Buttom.jsx';
-import TranslatableText, { T } from '@/components/common/TranslatableText';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import ReadingPanel from '../../components/journey/ReadingPanel.jsx'; // 컴포넌트
-import { getJourneyUsage, getJourneyProgress } from '../../api/journey';
-import { useSubscription } from '../../hooks/useSubscription.js'; // 훅
-import { getJourneyLevel } from '../../shared/constants/levels';
-import { PRODUCTS } from '../../shared/constants/products';
+"use client"
+
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { useSelector, useDispatch } from "react-redux"
+import { BookOpen, Mic, TrendingUp, Clock, Play, Volume2, Target, Zap, Calendar } from "lucide-react"
+import Button, { PrimaryButton, OutlineButton } from "../../components/common/Buttom.jsx"
+import { T } from "@/components/common/TranslatableText"
+import LoadingSpinner from "../../components/common/LoadingSpinner"
+import ReadingPanel from "../../components/journey/ReadingPanel.jsx"
+import { useSubscription } from "../../hooks/useSubscription.js"
+// Importe as ações e seletores do seu journeySlice existente
+import {
+  fetchUsage,
+  fetchProgress,
+  selectUsage,
+  selectProgress,
+  selectLoading,
+  selectErrors,
+} from "../../store/slices/journeySlice.js" // Caminho corrigido para journeySlice
 
 const JourneyHome = () => {
-  const navigate = useNavigate();
-  const { user, isAuthenticated } = useSelector(state => state.auth);
-  
-  // 구독 상태 관리 훅
-  const { 
-    hasSubscription, 
-    getUsageInfo, 
-    isSubscribed,
-    getSubscriptionStatus 
-  } = useSubscription();
-  
-  // 상태 관리
-  const [usage, setUsage] = useState(null);
-  const [progress, setProgress] = useState(null);
-  const [recentReadings, setRecentReadings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedLevel, setSelectedLevel] = useState('level1');
-  const [showReadingPanel, setShowReadingPanel] = useState(false);
-  const [readingConfig, setReadingConfig] = useState({ level: 'level1', type: 'reading' });
-  
-  // 사용자 레벨 정보
-  const userLevel = user?.profile?.koreanLevel || 'beginner';
-  const levelConfig = getJourneyLevel(userLevel);
-  const productInfo = PRODUCTS.journey;
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+  const { user, isAuthenticated } = useSelector((state) => state.auth)
 
-  // 구독 상태 확인
-  const hasJourneySubscription = isSubscribed('journey');
-  const subscriptionStatus = getSubscriptionStatus('journey');
+  // Obtenha os dados de uso e progresso do Redux store
+  const usage = useSelector(selectUsage)
+  const progress = useSelector(selectProgress)
+  const journeyLoading = useSelector(selectLoading)
+  const journeyErrors = useSelector(selectErrors)
+
+  // Estado local para recentReadings e UI
+  const [recentReadings, setRecentReadings] = useState([])
+  const [selectedLevel, setSelectedLevel] = useState("level1")
+  const [showReadingPanel, setShowReadingPanel] = useState(false)
+  const [readingConfig, setReadingConfig] = useState({ level: "level1", type: "reading" })
+
+  // Assumindo que o loading geral é a combinação dos loadings de usage e progress
+  const loading = journeyLoading.usage || journeyLoading.progress
+  const error = journeyErrors.usage || journeyErrors.progress
+
+  // 구독 상태 관리 훅
+  const { hasSubscription, getUsageInfo, isSubscribed, getSubscriptionStatus } = useSubscription()
 
   // Korean Journey 레벨 정보
+  const hasJourneySubscription = isSubscribed("journey")
+  const subscriptionStatus = getSubscriptionStatus("journey")
   const journeyLevels = [
-    { 
-      id: 'level1', 
-      name: '한글 마스터', 
-      color: 'emerald', 
-      difficulty: '완전 초급', 
-      description: '한글 자음/모음부터',
-      speed: '0.5x',
-      focus: '한글 학습'
+    {
+      id: "level1",
+      name: "한글 마스터",
+      color: "emerald",
+      difficulty: "완전 초급",
+      description: "한글 자음/모음부터",
+      speed: "0.5x",
+      focus: "한글 학습",
     },
-    { 
-      id: 'level2', 
-      name: '기초 리더', 
-      color: 'blue', 
-      difficulty: '초급', 
-      description: '일상 대화와 표현',
-      speed: '0.8x-1.0x',
-      focus: '발음 규칙'
+    {
+      id: "level2",
+      name: "기초 리더",
+      color: "blue",
+      difficulty: "초급",
+      description: "일상 대화와 표현",
+      speed: "0.8x-1.0x",
+      focus: "발음 규칙",
     },
-    { 
-      id: 'level3', 
-      name: '중급 리더', 
-      color: 'purple', 
-      difficulty: '중급', 
-      description: '뉴스와 문학 작품',
-      speed: '1.0x-1.2x',
-      focus: '감정 표현'
+    {
+      id: "level3",
+      name: "중급 리더",
+      color: "purple",
+      difficulty: "중급",
+      description: "뉴스와 문학 작품",
+      speed: "1.0x-1.2x",
+      focus: "감정 표현",
     },
-    { 
-      id: 'level4', 
-      name: '고급 리더', 
-      color: 'red', 
-      difficulty: '고급', 
-      description: '전문 텍스트',
-      speed: '1.5x+',
-      focus: '프레젠테이션'
-    }
-  ];
-
+    {
+      id: "level4",
+      name: "고급 리더",
+      color: "red",
+      difficulty: "고급",
+      description: "전문 텍스트",
+      speed: "1.5x+",
+      focus: "프레젠테이션",
+    },
+  ]
   // 콘텐츠 유형
   const contentTypes = [
-    { id: 'hangul', name: '한글 학습', icon: BookOpen, description: '자음/모음 마스터' },
-    { id: 'reading', name: '읽기 연습', icon: BookOpen, description: '텍스트 리딩' },
-    { id: 'pronunciation', name: '발음 연습', icon: Mic, description: '정확한 발음' },
-    { id: 'dialogue', name: '대화 연습', icon: Volume2, description: '실전 대화' }
-  ];
+    { id: "hangul", name: "한글 학습", icon: BookOpen, description: "자음/모음 마스터" },
+    { id: "reading", name: "읽기 연습", icon: BookOpen, description: "텍스트 리딩" },
+    { id: "pronunciation", name: "발음 연습", icon: Mic, description: "정확한 발음" },
+    { id: "dialogue", name: "대화 연습", icon: Volume2, description: "실전 대화" },
+  ]
 
-  // 데이터 로드
+  // Data Load
   useEffect(() => {
     if (isAuthenticated) {
-      loadDashboardData();
+      loadDashboardData()
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated])
 
   const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      if (hasJourneySubscription) {
-        // 실제 API 호출
-        const [usageResponse, progressResponse] = await Promise.all([
-          getJourneyUsage(),
-          getJourneyProgress()
-        ]);
-        
-        setUsage(usageResponse.data);
-        setProgress(progressResponse.data);
-        
-        // 최근 읽기 활동은 progress 데이터에서 추출
-        if (progressResponse.data?.history) {
-          setRecentReadings(progressResponse.data.history.slice(0, 3));
-        }
-      } else {
-        // 구독이 없는 경우 빈 데이터
-        setUsage({ has_subscription: false });
-        setProgress(null);
-        setRecentReadings([]);
-      }
-      
-    } catch (err) {
-      console.error('Dashboard data load error:', err);
-      setError(err.message || '데이터를 불러오는데 실패했습니다.');
-      
-      // 에러 발생 시 기본값 설정
-      setUsage({ has_subscription: hasJourneySubscription, remaining: 0, daily_limit: 20 });
-      setProgress({ total_readings: 0, total_sentences: 0, avg_pronunciation: 0 });
-      setRecentReadings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Dispatch as thunks para buscar os dados e atualizar o Redux store
+    dispatch(fetchUsage())
+    dispatch(fetchProgress())
+  }
 
   // 리딩 세션 시작
-  const startReading = (level = selectedLevel, type = 'reading') => {
+  const startReading = (level = selectedLevel, type = "reading") => {
     if (!hasJourneySubscription) {
-      navigate('/subscription/plans');
-      return;
+      navigate("/subscription/plans")
+      return
+    }
+    if (usage?.remaining <= 0) {
+      alert("오늘의 학습량을 모두 사용했습니다. 내일 다시 시도해주세요!")
+      return
     }
 
-    if (usage?.remaining <= 0) {
-      alert('오늘의 학습량을 모두 사용했습니다. 내일 다시 시도해주세요!');
-      return;
-    }
-    
-    setReadingConfig({ level, type });
-    setShowReadingPanel(true);
-  };
+    setReadingConfig({ level, type })
+    setShowReadingPanel(true)
+  }
 
   // 리딩 완료 처리
   const handleReadingComplete = (data) => {
-    setShowReadingPanel(false);
-    // 성공 메시지는 ReadingPanel에서 처리됨
-    // 데이터 새로고침
-    loadDashboardData();
-  };
+    setShowReadingPanel(false)
+    // Após completar, recarregue os dados para atualizar o Redux store
+    loadDashboardData()
+  }
 
   // 리딩 진행 상황 처리
   const handleReadingProgress = (progressData) => {
-    // 실시간 진행 상황 업데이트 처리
-    console.log('Reading progress:', progressData);
-  };
+    console.log("Reading progress:", progressData)
+  }
 
   // 리딩 패널 종료
   const closeReadingPanel = () => {
-    setShowReadingPanel(false);
-  };
+    setShowReadingPanel(false)
+  }
+
+  // Atualiza recentReadings quando progress muda
+  useEffect(() => {
+    if (progress?.history) {
+      setRecentReadings(progress.history.slice(0, 3))
+    }
+  }, [progress])
 
   // 구독이 없는 경우
   if (!hasJourneySubscription) {
@@ -206,8 +165,8 @@ const JourneyHome = () => {
                 구독 필요
               </div>
             </div>
-            <PrimaryButton 
-              onClick={() => navigate('/subscription/plans')}
+            <PrimaryButton
+              onClick={() => navigate("/subscription/plans")}
               size="lg"
               className="bg-green-600 hover:bg-green-700"
               textKey="구독하고 시작하기"
@@ -215,7 +174,7 @@ const JourneyHome = () => {
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   if (loading) {
@@ -228,7 +187,7 @@ const JourneyHome = () => {
           </p>
         </div>
       </div>
-    );
+    )
   }
 
   // 리딩 패널이 열려있을 때
@@ -240,13 +199,13 @@ const JourneyHome = () => {
             <Button
               variant="outline"
               onClick={closeReadingPanel}
-              className="flex items-center space-x-2"
+              className="flex items-center space-x-2 bg-transparent"
             >
               <BookOpen className="w-4 h-4" />
               <span>홈으로 돌아가기</span>
             </Button>
           </div>
-          
+
           <ReadingPanel
             level={readingConfig.level}
             onComplete={handleReadingComplete}
@@ -255,15 +214,14 @@ const JourneyHome = () => {
           />
         </div>
       </div>
-    );
+    )
   }
 
-  const selectedLevelInfo = journeyLevels.find(l => l.id === selectedLevel);
+  const selectedLevelInfo = journeyLevels.find((l) => l.id === selectedLevel)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-100 p-6">
       <div className="max-w-6xl mx-auto space-y-6">
-        
         {/* 헤더 */}
         <div className="bg-white rounded-xl shadow-lg p-6">
           <div className="flex items-center justify-between">
@@ -284,12 +242,12 @@ const JourneyHome = () => {
               <div className="text-sm text-gray-500">
                 <T>구독 상태</T>
               </div>
-              <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
-                subscriptionStatus === 'active' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-yellow-100 text-yellow-800'
-              }`}>
-                {subscriptionStatus === 'active' ? '활성' : subscriptionStatus}
+              <div
+                className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
+                  subscriptionStatus === "active" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                }`}
+              >
+                {subscriptionStatus === "active" ? "활성" : subscriptionStatus}
               </div>
             </div>
           </div>
@@ -297,7 +255,6 @@ const JourneyHome = () => {
 
         {/* 사용량 및 빠른 액션 */}
         <div className="grid md:grid-cols-3 gap-6">
-          
           {/* 오늘의 사용량 */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
@@ -317,16 +274,22 @@ const JourneyHome = () => {
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${(((usage?.daily_limit || 20) - (usage?.remaining || 0)) / (usage?.daily_limit || 20)) * 100}%` 
+                    style={{
+                      width: `${(((usage?.daily_limit || 20) - (usage?.remaining || 0)) / (usage?.daily_limit || 20)) * 100}%`,
                     }}
                   />
                 </div>
               </div>
               <div className="text-sm text-gray-500">
-                <T>{usage?.remaining || 0}문장 남음 • {usage?.reset_at ? new Date(usage.reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '24:00'} 초기화</T>
+                <T>
+                  {usage?.remaining || 0}문장 남음 •{" "}
+                  {usage?.reset_at
+                    ? new Date(usage.reset_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+                    : "24:00"}{" "}
+                  초기화
+                </T>
               </div>
             </div>
           </div>
@@ -343,11 +306,11 @@ const JourneyHome = () => {
               <p className="text-sm text-gray-600 mb-4">
                 <T>{selectedLevelInfo?.description}</T>
               </p>
-              <Button 
+              <Button
                 onClick={() => startReading()}
                 disabled={(usage?.remaining || 0) <= 0}
                 className="w-full bg-blue-600 hover:bg-blue-700"
-                textKey={(usage?.remaining || 0) > 0 ? '읽기 시작하기' : '사용량 초과'}
+                textKey={(usage?.remaining || 0) > 0 ? "읽기 시작하기" : "사용량 초과"}
               />
             </div>
           </div>
@@ -388,7 +351,7 @@ const JourneyHome = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-6">
             <T>학습 레벨 선택</T>
           </h2>
-          
+
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {journeyLevels.map((level) => (
               <button
@@ -397,7 +360,7 @@ const JourneyHome = () => {
                 className={`p-4 rounded-lg border text-left transition-all ${
                   selectedLevel === level.id
                     ? `border-${level.color}-500 bg-${level.color}-50 text-${level.color}-700`
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -412,7 +375,9 @@ const JourneyHome = () => {
                   <T>{level.description}</T>
                 </div>
                 <div className="text-xs text-gray-500">
-                  <T>속도: {level.speed} • {level.focus}</T>
+                  <T>
+                    속도: {level.speed} • {level.focus}
+                  </T>
                 </div>
               </button>
             ))}
@@ -421,7 +386,7 @@ const JourneyHome = () => {
           {/* 콘텐츠 유형 선택 */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {contentTypes.map((type) => {
-              const Icon = type.icon;
+              const Icon = type.icon
               return (
                 <Button
                   key={type.id}
@@ -440,7 +405,7 @@ const JourneyHome = () => {
                     </div>
                   </div>
                 </Button>
-              );
+              )
             })}
           </div>
         </div>
@@ -451,20 +416,20 @@ const JourneyHome = () => {
             <h3 className="text-lg font-semibold text-gray-900">
               <T>{selectedLevelInfo?.name} 레벨 정보</T>
             </h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-medium bg-${selectedLevelInfo?.color}-100 text-${selectedLevelInfo?.color}-700`}>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-medium bg-${selectedLevelInfo?.color}-100 text-${selectedLevelInfo?.color}-700`}
+            >
               <T>{selectedLevelInfo?.difficulty}</T>
             </span>
           </div>
-          
+
           <p className="text-gray-600 mb-4">
             <T>{selectedLevelInfo?.description}을 중심으로 학습합니다.</T>
           </p>
-          
+
           <div className="grid md:grid-cols-3 gap-4">
             <div className={`text-center p-3 bg-${selectedLevelInfo?.color}-50 rounded-lg`}>
-              <div className={`text-lg font-bold text-${selectedLevelInfo?.color}-600`}>
-                {selectedLevelInfo?.speed}
-              </div>
+              <div className={`text-lg font-bold text-${selectedLevelInfo?.color}-600`}>{selectedLevelInfo?.speed}</div>
               <div className={`text-xs text-${selectedLevelInfo?.color}-600`}>
                 <T>읽기 속도</T>
               </div>
@@ -490,7 +455,6 @@ const JourneyHome = () => {
 
         {/* 레벨별 진행률 및 최근 활동 */}
         <div className="grid lg:grid-cols-2 gap-6">
-          
           {/* 레벨별 진행률 */}
           <div className="bg-white rounded-xl shadow-lg p-6">
             <div className="flex items-center justify-between mb-6">
@@ -499,12 +463,12 @@ const JourneyHome = () => {
               </h2>
               <Target className="w-5 h-5 text-gray-400" />
             </div>
-            
+
             <div className="space-y-4">
               {journeyLevels.map((level) => {
-                const stats = progress?.level_stats?.[level.id];
-                if (!stats) return null;
-                
+                const stats = progress?.level_stats?.[level.id]
+                if (!stats) return null
+
                 return (
                   <div key={level.id} className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -523,7 +487,7 @@ const JourneyHome = () => {
                         <T>{stats.count}회 완료</T>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <span>
                         <T>평균 발음: {stats.average_pronunciation?.toFixed(1) || 0}점</T>
@@ -533,7 +497,7 @@ const JourneyHome = () => {
                       </span>
                     </div>
                   </div>
-                );
+                )
               })}
             </div>
           </div>
@@ -544,24 +508,23 @@ const JourneyHome = () => {
               <h2 className="text-xl font-semibold text-gray-900">
                 <T>최근 읽기 활동</T>
               </h2>
-              <OutlineButton 
+              <OutlineButton
                 size="sm"
-                onClick={() => navigate('/journey/progress')}
+                onClick={() => navigate("/journey/progress")}
                 className="flex items-center space-x-2"
               >
                 <Calendar className="w-4 h-4" />
                 <T>전체 기록</T>
               </OutlineButton>
             </div>
-
             {recentReadings.length > 0 ? (
               <div className="space-y-4">
                 {recentReadings.map((reading) => {
-                  const levelInfo = journeyLevels.find(l => l.id === reading.level);
-                  const typeInfo = contentTypes.find(t => t.id === reading.content_type);
-                  
+                  const levelInfo = journeyLevels.find((l) => l.id === reading.level)
+                  const typeInfo = contentTypes.find((t) => t.id === reading.content_type)
+
                   return (
-                    <div 
+                    <div
                       key={reading.history_id}
                       className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                     >
@@ -574,15 +537,23 @@ const JourneyHome = () => {
                             <T>{reading.content_title}</T>
                           </div>
                           <div className="text-sm text-gray-500">
-                            <T>{levelInfo?.name} • {typeInfo?.name}</T> • {new Date(reading.date).toLocaleDateString('ko-KR')}
+                            <T>
+                              {levelInfo?.name} • {typeInfo?.name}
+                            </T>{" "}
+                            • {new Date(reading.date).toLocaleDateString("ko-KR")}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-sm font-medium ${
-                          reading.pronunciation_score >= 90 ? 'text-green-600' :
-                          reading.pronunciation_score >= 70 ? 'text-yellow-600' : 'text-red-600'
-                        }`}>
+                        <div
+                          className={`text-sm font-medium ${
+                            reading.pronunciation_score >= 90
+                              ? "text-green-600"
+                              : reading.pronunciation_score >= 70
+                                ? "text-yellow-600"
+                                : "text-red-600"
+                          }`}
+                        >
                           <T>발음 {reading.pronunciation_score}점</T>
                         </div>
                         <div className="text-xs text-gray-500">
@@ -590,7 +561,7 @@ const JourneyHome = () => {
                         </div>
                       </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             ) : (
@@ -602,7 +573,7 @@ const JourneyHome = () => {
                 <p className="text-gray-500 mb-4">
                   <T>첫 번째 읽기 학습을 시작해보세요!</T>
                 </p>
-                <Button 
+                <Button
                   onClick={() => startReading()}
                   disabled={(usage?.remaining || 0) <= 0}
                   textKey="읽기 시작하기"
@@ -620,16 +591,14 @@ const JourneyHome = () => {
             </h2>
             <Zap className="w-5 h-5 text-yellow-500" />
           </div>
-          
+
           <div className="grid md:grid-cols-7 gap-2">
             {progress?.date_stats?.slice(0, 7).map((dayStat, index) => (
               <div key={index} className="text-center p-3 bg-gray-50 rounded-lg">
                 <div className="text-xs text-gray-500 mb-1">
-                  {new Date(dayStat.date).toLocaleDateString('ko-KR', { weekday: 'short' })}
+                  {new Date(dayStat.date).toLocaleDateString("ko-KR", { weekday: "short" })}
                 </div>
-                <div className="text-sm font-medium text-gray-900 mb-1">
-                  {dayStat.count}회
-                </div>
+                <div className="text-sm font-medium text-gray-900 mb-1">{dayStat.count}회</div>
                 <div className="text-xs text-gray-500">
                   <T>{dayStat.total_sentences}문장</T>
                 </div>
@@ -640,7 +609,7 @@ const JourneyHome = () => {
               </div>
             )}
           </div>
-          
+
           {progress?.date_stats?.length > 0 && (
             <div className="mt-4 text-center">
               <div className="text-sm text-gray-600">
@@ -650,15 +619,15 @@ const JourneyHome = () => {
           )}
         </div>
 
-        {/* 에러 표시 */}
+        {/* 에ror 표시 */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div className="text-red-800">
                 <T>{error}</T>
               </div>
-              <OutlineButton 
-                size="sm" 
+              <OutlineButton
+                size="sm"
                 onClick={loadDashboardData}
                 className="text-red-600 border-red-300 hover:bg-red-100"
                 textKey="다시 시도"
@@ -668,7 +637,7 @@ const JourneyHome = () => {
         )}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default JourneyHome;
+export default JourneyHome

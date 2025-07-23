@@ -1,252 +1,318 @@
-import { useSelector, useDispatch } from 'react-redux'
-import { useEffect, useCallback, useRef } from 'react'
+"use client"
+
+import { useSelector, useDispatch } from "react-redux"
+import { useEffect, useCallback, useRef, useMemo, useState } from "react"
 import {
   updateXP,
   updateStreak,
   fetchLeaderboard,
   fetchUserStats,
   unlockAchievement,
-  checkLevelUp,
   clearErrors,
   resetSuccessStates,
-  setShowXPAnimation,
   setShowLevelUpModal,
   setShowAchievementModal,
-  setLastActivityTime,
-  setTempXPGain,
   selectGamification,
-  selectTotalXP,
-  selectCurrentLevel,
-  selectCurrentLeague,
-  selectStreakDays,
-  selectAchievements,
-  selectLeaderboard,
-  selectUserRank
-} from '@store/slices/gamificationSlice'
-import { 
-  gamificationEvents, 
-  XP_ACTIVITIES, 
-  ACHIEVEMENT_IDS, 
-  gamificationUtils 
-} from '@api/gamification'
+} from "@store/slices/gamificationSlice"
+import { XP_ACTIVITIES } from "@api/gamification"
+// We no longer need to import gamificationAPI directly here as the thunks handle it.
+
+// Level configuration (consistent and predictable)
+const LEVEL_CONFIG = {
+  // XP required for each level
+  levelRequirements: [
+    0,    // Level 0
+    100,  // Level 1
+    250,  // Level 2
+    450,  // Level 3
+    700,  // Level 4
+    1000, // Level 5
+    1350, // Level 6
+    1750, // Level 7
+    2200, // Level 8
+    2700, // Level 9
+    3250, // Level 10
+    3850, // Level 11
+    4500, // Level 12
+    5200, // Level 13
+    5950, // Level 14
+    6750, // Level 15
+    7600, // Level 16
+    8500, // Level 17
+    9450, // Level 18
+    10450,// Level 19
+    11500 // Level 20
+  ],
+
+  // Function to calculate XP for levels beyond 20
+  calculateHighLevelXP: (level) => {
+    if (level <= 20) return LEVEL_CONFIG.levelRequirements[level] || 0
+    // For levels above 20, use exponential progression
+    const baseXP = 11500
+    const multiplier = Math.pow(1.2, level - 20)
+    return Math.floor(baseXP * multiplier)
+  },
+}
 
 /**
- * 게임화 시스템 관련 기능을 제공하는 커스텀 훅
+ * Custom hook providing gamification system features (Backend integration)
  */
 export const useGamification = () => {
   const dispatch = useDispatch()
   const animationTimeoutRef = useRef(null)
-  
-  // Redux 상태 선택
-  const gamification = useSelector(selectGamification)
-  const totalXP = useSelector(selectTotalXP)
-  const currentLevel = useSelector(selectCurrentLevel)
-  const currentLeague = useSelector(selectCurrentLeague)
-  const streakDays = useSelector(selectStreakDays)
-  const achievements = useSelector(selectAchievements)
-  const leaderboard = useSelector(selectLeaderboard)
-  const userRank = useSelector(selectUserRank)
-  
-  // XP 추가 함수
-  const addXP = useCallback(async (activity, amount = 10, metadata = {}) => {
-    try {
-      // 임시 XP 표시 (즉시 피드백)
-      dispatch(setTempXPGain({ amount, activity }))
-      
-      const result = await dispatch(updateXP({ activity, amount, metadata })).unwrap()
-      
-      // 레벨업 체크
-      if (result.total_xp !== totalXP) {
-        await dispatch(checkLevelUp())
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Select Redux state directly
+  const gamificationState = useSelector(selectGamification)
+  const totalXP = gamificationState.totalXP || 0
+  const currentLevel = gamificationState.currentLevel || 0
+  const currentLeague = gamificationState.currentLeague
+  const streakDays = gamificationState.streakDays || 0
+  const achievements = gamificationState.unlockedAchievements || [] // Use unlockedAchievements
+  const leaderboard = gamificationState.leaderboard || []
+  const userRank = gamificationState.userRank
+  const isLoading = gamificationState.isLoading || gamificationState.isStatsLoading // Use slice's isLoading
+  const syncError = gamificationState.error || gamificationState.statsError // Use slice's error
+
+  // Safe level calculation
+  const calculateLevel = useCallback((xp) => {
+    const safeXP = Math.max(0, Number(xp) || 0)
+    for (let i = LEVEL_CONFIG.levelRequirements.length - 1; i >= 0; i--) {
+      if (safeXP >= LEVEL_CONFIG.levelRequirements[i]) {
+        return i
       }
-      
+    }
+    let level = 20
+    while (safeXP >= LEVEL_CONFIG.calculateHighLevelXP(level + 1)) {
+      level++
+      if (level > 100) break
+    }
+    return level
+  }, [])
+
+  // XP needed for next level
+  const getXPToNextLevel = useCallback(
+    (xp = totalXP) => {
+      const safeXPValue = Math.max(0, Number(xp) || 0)
+      const level = calculateLevel(safeXPValue)
+      if (level >= 100) return 0
+      const nextLevelXP =
+        level < 20 ? LEVEL_CONFIG.levelRequirements[level + 1] : LEVEL_CONFIG.calculateHighLevelXP(level + 1)
+      return Math.max(0, nextLevelXP - safeXPValue)
+    },
+    [totalXP, calculateLevel],
+  )
+
+  // Current level progress percentage
+  const getCurrentLevelProgress = useCallback(
+    (xp = totalXP) => {
+      const safeXPValue = Math.max(0, Number(xp) || 0)
+      const level = calculateLevel(safeXPValue)
+      if (level >= 100) return 100
+      const currentLevelXP =
+        level < 20 ? LEVEL_CONFIG.levelRequirements[level] : LEVEL_CONFIG.calculateHighLevelXP(level)
+      const nextLevelXP =
+        level < 20 ? LEVEL_CONFIG.levelRequirements[level + 1] : LEVEL_CONFIG.calculateHighLevelXP(level + 1)
+      const progressXP = safeXPValue - currentLevelXP
+      const totalNeededXP = nextLevelXP - currentLevelXP
+      if (totalNeededXP <= 0) return 100
+      const progress = (progressXP / totalNeededXP) * 100
+      return Math.min(Math.max(progress, 0), 100)
+    },
+    [totalXP, calculateLevel],
+  )
+
+  // Memoized calculated values
+  const calculatedLevel = useMemo(() => calculateLevel(totalXP), [totalXP, calculateLevel])
+  const xpToNextLevelValue = useMemo(() => getXPToNextLevel(totalXP), [totalXP, getXPToNextLevel])
+  const levelProgressValue = useMemo(() => getCurrentLevelProgress(totalXP), [totalXP, getCurrentLevelProgress])
+
+  // Function to fetch backend data (now dispatches thunk)
+  const fetchBackendData = useCallback(async () => {
+    try {
+      console.log("🔄 Fetching gamification data from backend via Redux thunk...")
+      const result = await dispatch(fetchUserStats()).unwrap()
+      console.log("✅ Backend data fetched and synced to Redux:", result)
       return { success: true, data: result }
     } catch (error) {
-      return { success: false, error }
+      console.error("❌ Error fetching backend data via Redux thunk:", error)
+      return { success: false, error: error.message }
     }
-  }, [dispatch, totalXP])
-  
-  // 연속 학습 업데이트 함수
+  }, [dispatch])
+
+  // Initialization - fetch backend data
+  useEffect(() => {
+    if (!isInitialized) {
+      console.log("🚀 Initializing gamification hook...")
+      fetchBackendData().then(() => {
+        setIsInitialized(true)
+        console.log("✅ Gamification hook initialized")
+      })
+    }
+  }, [isInitialized, fetchBackendData])
+
+  // Function to add XP (dispatches thunk)
+  const addXP = useCallback(
+    async (activity, amount = 10, metadata = {}) => {
+      try {
+        const safeAmount = Math.max(0, Number(amount) || 0)
+        if (safeAmount === 0) {
+          console.warn("Invalid XP amount:", amount)
+          return { success: false, error: "Invalid XP amount" }
+        }
+
+        console.log(`🎯 Adding ${safeAmount} XP for activity: ${activity} via Redux thunk...`)
+        const result = await dispatch(updateXP({ activity, amount: safeAmount, metadata })).unwrap()
+
+        // Level up check and XP animation are handled in the slice's extraReducers and gamificationEvents listener,
+        // so no need to duplicate the logic here.
+
+        return {
+          success: true,
+          data: result,
+          xpGained: safeAmount,
+          leveledUp: result.leveled_up || false, // Assuming API response may have this
+          newLevel: result.new_level || null,
+        }
+      } catch (error) {
+        console.error("❌ Error adding XP via Redux thunk:", error)
+        return { success: false, error: error.message }
+      }
+    },
+    [dispatch],
+  )
+
+  // Function to update streak (dispatches thunk)
   const updateStreakDays = useCallback(async () => {
     try {
+      console.log("🔥 Updating streak via Redux thunk...")
       const result = await dispatch(updateStreak()).unwrap()
-      
-      // 연속 학습 마일스톤 체크
-      if (gamificationUtils.isStreakMilestone(result.streak_days)) {
-        await addXP(XP_ACTIVITIES.STREAK_MILESTONE, 50, {
-          milestone_days: result.streak_days
-        })
-      }
-      
+      // Milestone XP logic handled in slice extraReducers
       return { success: true, data: result }
     } catch (error) {
-      return { success: false, error }
-    }
-  }, [dispatch, addXP])
-  
-  // 배지 획득 함수
-  const unlockBadge = useCallback(async (achievementId, metadata = {}) => {
-    try {
-      const result = await dispatch(unlockAchievement({ achievementId, metadata })).unwrap()
-      
-      // 배지 획득 시 XP 보너스
-      await addXP('achievement_unlock', 25, { achievement: achievementId })
-      
-      return { success: true, data: result }
-    } catch (error) {
-      return { success: false, error }
-    }
-  }, [dispatch, addXP])
-  
-  // 리더보드 조회 함수
-  const refreshLeaderboard = useCallback(async (league = null, limit = 10) => {
-    try {
-      const result = await dispatch(fetchLeaderboard({ league, limit })).unwrap()
-      return { success: true, data: result }
-    } catch (error) {
-      return { success: false, error }
+      console.error("❌ Error updating streak via Redux thunk:", error)
+      return { success: false, error: error.message }
     }
   }, [dispatch])
-  
-  // 사용자 통계 조회 함수
+
+  // Function to fully refresh stats (dispatches thunk)
   const refreshStats = useCallback(async () => {
-    try {
-      const result = await dispatch(fetchUserStats()).unwrap()
-      return { success: true, data: result }
-    } catch (error) {
-      return { success: false, error }
-    }
-  }, [dispatch])
-  
-  // 에러 클리어 함수
-  const clearGamificationErrors = useCallback(() => {
-    dispatch(clearErrors())
-  }, [dispatch])
-  
-  // 성공 상태 리셋 함수
-  const resetGamificationStates = useCallback(() => {
-    dispatch(resetSuccessStates())
-  }, [dispatch])
-  
-  // 모달 제어 함수들
-  const showLevelUpModal = useCallback(() => {
-    dispatch(setShowLevelUpModal(true))
-  }, [dispatch])
-  
-  const hideLevelUpModal = useCallback(() => {
-    dispatch(setShowLevelUpModal(false))
-  }, [dispatch])
-  
-  const showAchievementModal = useCallback(() => {
-    dispatch(setShowAchievementModal(true))
-  }, [dispatch])
-  
-  const hideAchievementModal = useCallback(() => {
-    dispatch(setShowAchievementModal(false))
-  }, [dispatch])
-  
-  // XP 애니메이션 제어
-  const triggerXPAnimation = useCallback((amount) => {
-    dispatch(setTempXPGain({ amount }))
-    dispatch(setShowXPAnimation(true))
-    
-    // 애니메이션 자동 종료
-    if (animationTimeoutRef.current) {
-      clearTimeout(animationTimeoutRef.current)
-    }
-    
-    animationTimeoutRef.current = setTimeout(() => {
-      dispatch(setShowXPAnimation(false))
-    }, gamificationUtils.getXPAnimationDuration(amount))
-  }, [dispatch])
-  
-  // 활동 기록 함수 (XP 없이 활동만 기록)
-  const recordActivity = useCallback((activity, metadata = {}) => {
-    dispatch(setLastActivityTime())
-    
-    // 백엔드에 활동 기록 (XP 없이)
-    // 실제로는 별도 API 호출이 필요할 수 있음
-    console.log('Activity recorded:', { activity, metadata, timestamp: new Date().toISOString() })
-  }, [dispatch])
-  
-  // 상품별 XP 추가 함수들
-  const addTalkXP = useCallback((amount = 10, metadata = {}) => {
-    return addXP(XP_ACTIVITIES.TALK_CHAT, amount, metadata)
-  }, [addXP])
-  
-  const addDramaXP = useCallback((amount = 15, metadata = {}) => {
-    return addXP(XP_ACTIVITIES.DRAMA_SENTENCE_COMPLETE, amount, metadata)
-  }, [addXP])
-  
-  const addTestXP = useCallback((amount = 20, metadata = {}) => {
-    return addXP(XP_ACTIVITIES.TEST_QUIZ_COMPLETE, amount, metadata)
-  }, [addXP])
-  
-  const addJourneyXP = useCallback((amount = 12, metadata = {}) => {
-    return addXP(XP_ACTIVITIES.JOURNEY_READING_COMPLETE, amount, metadata)
-  }, [addXP])
-  
-  // 특별 활동 XP 함수들
-  const addPerfectScoreXP = useCallback((subject = 'general') => {
-    return addXP(XP_ACTIVITIES.PERFECT_SCORE, 50, { subject })
-  }, [addXP])
-  
-  const addDailyLoginXP = useCallback(() => {
-    return addXP(XP_ACTIVITIES.DAILY_LOGIN, 5)
-  }, [addXP])
-  
-  const addCompleteLessonXP = useCallback((lessonType, duration = 0) => {
-    const baseXP = 10
-    const timeBonus = Math.min(Math.floor(duration / 60), 20) // 분당 1XP, 최대 20XP
-    return addXP(XP_ACTIVITIES.COMPLETE_LESSON, baseXP + timeBonus, { 
-      lesson_type: lessonType,
-      duration 
-    })
-  }, [addXP])
-  
-  // 게임화 이벤트 리스너
-  useEffect(() => {
-    const cleanup = gamificationEvents.onGamificationEvent((event) => {
-      switch (event.type) {
-        case 'xp-gained':
-          console.log('XP gained:', event.data)
-          if (event.data.amount > 0) {
-            triggerXPAnimation(event.data.amount)
-          }
-          break
-        case 'streak-updated':
-          console.log('Streak updated:', event.data)
-          break
-        case 'achievement-unlocked':
-          console.log('Achievement unlocked:', event.data)
-          showAchievementModal()
-          break
-        case 'level-up':
-          console.log('Level up:', event.data)
-          showLevelUpModal()
-          break
-        case 'league-promotion':
-          console.log('League promotion:', event.data)
-          break
+    return fetchBackendData()
+  }, [fetchBackendData])
+
+  // Function to refresh leaderboard (dispatches thunk)
+  const refreshLeaderboard = useCallback(
+    async (league = null, limit = 10) => {
+      try {
+        console.log("🏆 Refreshing leaderboard via Redux thunk...")
+        const result = await dispatch(fetchLeaderboard({ league, limit })).unwrap()
+        return { success: true, data: result }
+      } catch (error) {
+        console.error("❌ Error refreshing leaderboard via Redux thunk:", error)
+        return { success: false, error: error.message }
       }
-    })
-    
-    return cleanup
-  }, [triggerXPAnimation, showAchievementModal, showLevelUpModal])
-  
-  // 자동 데이터 갱신 (5분마다)
+    },
+    [dispatch],
+  )
+
+  // Function to unlock achievement (dispatches thunk)
+  const unlockBadge = useCallback(
+    async (achievementId, metadata = {}) => {
+      try {
+        console.log(`🏅 Unlocking achievement: ${achievementId} via Redux thunk...`)
+        const result = await dispatch(unlockAchievement({ achievementId, metadata })).unwrap()
+        // Bonus XP and modal handled in slice extraReducers and event listener
+        return { success: true, data: result }
+      } catch (error) {
+        console.error("❌ Error unlocking achievement via Redux thunk:", error)
+        return { success: false, error: error.message }
+      }
+    },
+    [dispatch],
+  )
+
+  // League info
+  const getLeagueInfo = useCallback(() => {
+    const level = currentLevel // Use currentLevel from Redux
+    if (level >= 20) return { name: "Diamond", color: "text-purple-500" }
+    if (level >= 15) return { name: "Platinum", color: "text-blue-500" }
+    if (level >= 10) return { name: "Gold", color: "text-yellow-500" }
+    if (level >= 5) return { name: "Silver", color: "text-gray-500" }
+    return { name: "Bronze", color: "text-orange-600" }
+  }, [currentLevel])
+
+  // Check if user has achievement
+  const hasAchievement = useCallback(
+    (achievementId) => {
+      return achievements.some(
+        (achievement) => achievement.id === achievementId || achievement.achievement_id === achievementId,
+      )
+    },
+    [achievements],
+  )
+
+  // Streak bonus multiplier
+  const getStreakBonus = useCallback(() => {
+    const days = streakDays // Use streakDays from Redux
+    if (days >= 100) return 3.0
+    if (days >= 60) return 2.5
+    if (days >= 30) return 2.0
+    if (days >= 14) return 1.5
+    if (days >= 7) return 1.2
+    return 1.0
+  }, [streakDays])
+
+  // Check if user is currently on a streak
+  const isOnStreak = useCallback(() => {
+    return streakDays > 0
+  }, [streakDays])
+
+  // Days until next streak milestone
+  const getDaysUntilStreakMilestone = useCallback(() => {
+    const days = streakDays // Use streakDays from Redux
+    const milestones = [7, 14, 30, 60, 100, 200, 365]
+    const nextMilestone = milestones.find((milestone) => milestone > days)
+    return nextMilestone || null
+  }, [streakDays])
+
+  // UI control functions (dispatch slice actions)
+  const showLevelUpModal = useCallback(() => dispatch(setShowLevelUpModal(true)), [dispatch])
+  const hideLevelUpModal = useCallback(() => dispatch(setShowLevelUpModal(false)), [dispatch])
+  const showAchievementModal = useCallback(() => dispatch(setShowAchievementModal(true)), [dispatch])
+  const hideAchievementModal = useCallback(() => dispatch(setShowAchievementModal(false)), [dispatch])
+
+  // Product-specific functions (use addXP)
+  const addTalkXP = useCallback(
+    (amount = 10, metadata = {}) => addXP(XP_ACTIVITIES.TALK_CHAT, amount, metadata),
+    [addXP],
+  )
+  const addDramaXP = useCallback(
+    (amount = 15, metadata = {}) => addXP(XP_ACTIVITIES.DRAMA_SENTENCE_COMPLETE, amount, metadata),
+    [addXP],
+  )
+  const addTestXP = useCallback(
+    (amount = 20, metadata = {}) => addXP(XP_ACTIVITIES.TEST_QUIZ_COMPLETE, amount, metadata),
+    [addXP],
+  )
+  const addJourneyXP = useCallback(
+    (amount = 12, metadata = {}) => addXP(XP_ACTIVITIES.JOURNEY_READING_COMPLETE, amount, metadata),
+    [addXP],
+  )
+  const addDailyLoginXP = useCallback(() => addXP(XP_ACTIVITIES.DAILY_LOGIN, 5), [addXP])
+
+  // Auto-refresh every 30 seconds if the page is visible
   useEffect(() => {
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === "visible" && isInitialized) {
         refreshStats()
-        refreshLeaderboard(currentLeague)
+        refreshLeaderboard(currentLeague) // Also update leaderboard
       }
-    }, 5 * 60 * 1000) // 5분
-    
+    }, 30000) // 30 seconds
+
     return () => clearInterval(interval)
-  }, [refreshStats, refreshLeaderboard, currentLeague])
-  
-  // 컴포넌트 언마운트 시 타이머 정리
+  }, [isInitialized, refreshStats, refreshLeaderboard, currentLeague])
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) {
@@ -254,104 +320,62 @@ export const useGamification = () => {
       }
     }
   }, [])
-  
-  // 유틸리티 함수들
-  const getXPToNextLevel = useCallback(() => {
-    return gamificationUtils.getXPToNextLevel(totalXP)
-  }, [totalXP])
-  
-  const getCurrentLevelProgress = useCallback(() => {
-    const currentLevelXP = gamificationUtils.calculateLevel(totalXP)
-    const nextLevelXP = gamificationUtils.getXPToNextLevel(totalXP)
-    const progress = currentLevelXP > 1 ? 
-      ((totalXP - getPreviousLevelXP()) / (nextLevelXP + totalXP - getPreviousLevelXP())) * 100 : 
-      (totalXP / 100) * 100
-    
-    return Math.min(Math.max(progress, 0), 100)
-  }, [totalXP])
-  
-  const getPreviousLevelXP = useCallback(() => {
-    const level = currentLevel
-    if (level <= 1) return 0
-    if (level === 2) return 100
-    if (level === 3) return 300
-    if (level === 4) return 600
-    if (level === 5) return 1000
-    return 1500 * Math.pow(2, level - 6)
-  }, [currentLevel])
-  
-  const getLeagueInfo = useCallback(() => {
-    return gamificationUtils.determineLeague(totalXP)
-  }, [totalXP])
-  
-  const hasAchievement = useCallback((achievementId) => {
-    return achievements.some(achievement => achievement.id === achievementId)
-  }, [achievements])
-  
-  const getStreakBonus = useCallback(() => {
-    if (streakDays >= 100) return 3 // 3배 XP
-    if (streakDays >= 30) return 2  // 2배 XP
-    if (streakDays >= 7) return 1.5 // 1.5배 XP
-    return 1 // 기본 XP
-  }, [streakDays])
-  
-  const isOnStreak = useCallback(() => {
-    return streakDays > 0
-  }, [streakDays])
-  
-  const getDaysUntilStreakMilestone = useCallback(() => {
-    const milestones = [7, 30, 50, 100, 200, 365]
-    const nextMilestone = milestones.find(milestone => milestone > streakDays)
-    return nextMilestone ? nextMilestone - streakDays : null
-  }, [streakDays])
-  
+
   return {
-    // 상태
-    ...gamification,
+    // Main states (read directly from Redux)
     totalXP,
     currentLevel,
-    currentLeague,
     streakDays,
+    currentLeague,
     achievements,
     leaderboard,
     userRank,
-    
-    // 기본 액션 함수들
+
+    // Control states
+    isLoading,
+    isInitialized,
+    syncError,
+    // backendData no longer needed as local state since Redux is the source of truth
+    // lastFetch no longer needed as local state
+
+    // Calculated values
+    xpToNextLevel: xpToNextLevelValue,
+    levelProgress: levelProgressValue,
+
+    // Main functions
     addXP,
     updateStreakDays,
     unlockBadge,
-    refreshLeaderboard,
     refreshStats,
-    clearGamificationErrors,
-    resetGamificationStates,
-    recordActivity,
-    
-    // 상품별 XP 함수들
+    refreshLeaderboard,
+    fetchBackendData, // Still useful to force initial fetch or debug
+
+    // Product-specific functions
     addTalkXP,
     addDramaXP,
     addTestXP,
     addJourneyXP,
-    
-    // 특별 활동 XP 함수들
-    addPerfectScoreXP,
     addDailyLoginXP,
-    addCompleteLessonXP,
-    
-    // UI 제어 함수들
+
+    // UI functions
     showLevelUpModal,
     hideLevelUpModal,
     showAchievementModal,
     hideAchievementModal,
-    triggerXPAnimation,
-    
-    // 유틸리티 함수들
+
+    // Utilities
     getXPToNextLevel,
     getCurrentLevelProgress,
     getLeagueInfo,
     hasAchievement,
     getStreakBonus,
     isOnStreak,
-    getDaysUntilStreakMilestone
+    getDaysUntilStreakMilestone,
+    calculateLevel,
+
+    // Cleanup functions
+    clearGamificationErrors: () => dispatch(clearErrors()),
+    resetGamificationStates: () => dispatch(resetSuccessStates()),
   }
 }
 

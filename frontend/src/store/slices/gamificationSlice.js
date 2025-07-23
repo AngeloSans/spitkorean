@@ -1,214 +1,254 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
-import { gamificationAPI, gamificationEvents } from '@api/gamification'
-import toast from 'react-hot-toast'
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit"
+import { gamificationAPI, gamificationEvents } from "@api/gamification"
+import toast from "react-hot-toast"
 
-// 비동기 액션들
+// Level configuration (duplicated here to ensure slice has access)
+const LEVEL_CONFIG = {
+  levelRequirements: [
+    0, // Level 0
+    100, // Level 1
+    250, // Level 2
+    450, // Level 3
+    700, // Level 4
+    1000, // Level 5
+    1350, // Level 6
+    1750, // Level 7
+    2200, // Level 8
+    2700, // Level 9
+    3250, // Level 10
+    3850, // Level 11
+    4500, // Level 12
+    5200, // Level 13
+    5950, // Level 14
+    6750, // Level 15
+    7600, // Level 16
+    8500, // Level 17
+    9450, // Level 18
+    10450, // Level 19
+    11500, // Level 20
+  ],
+  calculateHighLevelXP: (level) => {
+    if (level <= 20) return LEVEL_CONFIG.levelRequirements[level] || 0
+    const baseXP = 11500
+    const multiplier = Math.pow(1.2, level - 20)
+    return Math.floor(baseXP * multiplier)
+  },
+}
+
+// Level calculation function (for internal slice use)
+const calculateLevelFromXP = (xp) => {
+  const safeXP = Math.max(0, Number(xp) || 0)
+  for (let i = LEVEL_CONFIG.levelRequirements.length - 1; i >= 0; i--) {
+    if (safeXP >= LEVEL_CONFIG.levelRequirements[i]) {
+      return i
+    }
+  }
+  let level = 20
+  while (safeXP >= LEVEL_CONFIG.calculateHighLevelXP(level + 1)) {
+    level++
+    if (level > 100) break
+  }
+  return level
+}
+
+// Async actions
 export const updateXP = createAsyncThunk(
-  'gamification/updateXP',
+  "gamification/updateXP",
   async ({ activity, amount, metadata }, { rejectWithValue, getState }) => {
     try {
       const response = await gamificationAPI.updateXP({ activity, amount, metadata })
-      
-      if (response.status === 'success') {
+
+      if (response.status === "success") {
         gamificationEvents.emitXPGain(response.data)
-        
-        // XP 획득 토스트 표시
+
+        // Show XP gain toast
         if (amount > 0) {
-          toast.success(`🎉 ${amount} XP 획득!`, {
-            icon: '⭐',
+          toast.success(`🎉 Gained ${amount} XP!`, {
+            icon: "⭐",
             duration: 2000,
             style: {
-              background: '#FEF3C7',
-              color: '#92400E'
-            }
+              background: "#FEF3C7",
+              color: "#92400E",
+            },
           })
         }
-        
+
         return response.data
       }
-      
-      return rejectWithValue(response.message || 'XP 업데이트에 실패했습니다.')
+
+      return rejectWithValue(response.message || "Failed to update XP.")
     } catch (error) {
-      return rejectWithValue(error.message || 'XP 업데이트 중 오류가 발생했습니다.')
+      return rejectWithValue(error.message || "Error occurred while updating XP.")
     }
-  }
+  },
 )
 
-export const updateStreak = createAsyncThunk(
-  'gamification/updateStreak',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await gamificationAPI.updateStreak()
-      
-      if (response.status === 'success') {
-        const { streak_days, is_milestone } = response.data
-        
-        gamificationEvents.emitStreakUpdate(response.data)
-        
-        // 연속 학습 토스트
-        if (streak_days === 1) {
-          toast.success('🔥 연속 학습 시작!', { duration: 2000 })
-        } else if (is_milestone) {
-          toast.success(`🏆 ${streak_days}일 연속 학습 달성!`, {
-            icon: '🔥',
-            duration: 3000,
-            style: {
-              background: '#FEE2E2',
-              color: '#991B1B'
-            }
-          })
-        } else {
-          toast.success(`🔥 ${streak_days}일 연속!`, { duration: 1500 })
-        }
-        
-        return response.data
+export const updateStreak = createAsyncThunk("gamification/updateStreak", async (_, { rejectWithValue }) => {
+  try {
+    const response = await gamificationAPI.updateStreak()
+
+    if (response.status === "success") {
+      const { streak_days, is_milestone } = response.data
+
+      gamificationEvents.emitStreakUpdate(response.data)
+
+      // Streak toast notifications
+      if (streak_days === 1) {
+        toast.success("🔥 Streak started!", { duration: 2000 })
+      } else if (is_milestone) {
+        toast.success(`🏆 Achieved ${streak_days} days streak!`, {
+          icon: "🔥",
+          duration: 3000,
+          style: {
+            background: "#FEE2E2",
+            color: "#991B1B",
+          },
+        })
+      } else {
+        toast.success(`🔥 ${streak_days} days streak!`, { duration: 1500 })
       }
-      
-      return rejectWithValue(response.message || '연속 학습 업데이트에 실패했습니다.')
-    } catch (error) {
-      return rejectWithValue(error.message || '연속 학습 업데이트 중 오류가 발생했습니다.')
+
+      return response.data
     }
+
+    return rejectWithValue(response.message || "Failed to update streak.")
+  } catch (error) {
+    return rejectWithValue(error.message || "Error occurred while updating streak.")
   }
-)
+})
 
 export const fetchLeaderboard = createAsyncThunk(
-  'gamification/fetchLeaderboard',
+  "gamification/fetchLeaderboard",
   async ({ league, limit = 10 }, { rejectWithValue }) => {
     try {
       const response = await gamificationAPI.getLeaderboard({ league, limit })
-      
-      if (response.status === 'success') {
+
+      if (response.status === "success") {
         return response.data
       }
-      
-      return rejectWithValue(response.message || '리더보드 조회에 실패했습니다.')
+
+      return rejectWithValue(response.message || "Failed to fetch leaderboard.")
     } catch (error) {
-      return rejectWithValue(error.message || '리더보드 조회 중 오류가 발생했습니다.')
+      return rejectWithValue(error.message || "Error occurred while fetching leaderboard.")
     }
-  }
+  },
 )
 
-export const fetchUserStats = createAsyncThunk(
-  'gamification/fetchUserStats',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await gamificationAPI.getUserStats()
-      
-      if (response.status === 'success') {
-        return response.data
-      }
-      
-      return rejectWithValue(response.message || '사용자 통계 조회에 실패했습니다.')
-    } catch (error) {
-      return rejectWithValue(error.message || '사용자 통계 조회 중 오류가 발생했습니다.')
+export const fetchUserStats = createAsyncThunk("gamification/fetchUserStats", async (_, { rejectWithValue }) => {
+  try {
+    const response = await gamificationAPI.getUserStats()
+
+    if (response.status === "success") {
+      return response.data
     }
+
+    return rejectWithValue(response.message || "Failed to fetch user stats.")
+  } catch (error) {
+    return rejectWithValue(error.message || "Error occurred while fetching user stats.")
   }
-)
+})
 
 export const unlockAchievement = createAsyncThunk(
-  'gamification/unlockAchievement',
+  "gamification/unlockAchievement",
   async ({ achievementId }, { rejectWithValue }) => {
     try {
       const response = await gamificationAPI.unlockAchievement({ achievementId })
-      
-      if (response.status === 'success') {
+
+      if (response.status === "success") {
         const achievement = response.data.achievement
-        
+
         gamificationEvents.emitAchievementUnlock(achievement)
-        
-        // 배지 획득 토스트
-        toast.success(`🏅 새로운 배지: ${achievement.name}`, {
-          icon: '🎖️',
+
+        // Achievement unlocked toast
+        toast.success(`🏅 New badge: ${achievement.name}`, {
+          icon: "🎖️",
           duration: 4000,
           style: {
-            background: '#D1FAE5',
-            color: '#065F46'
-          }
+            background: "#D1FAE5",
+            color: "#065F46",
+          },
         })
-        
+
         return response.data
       }
-      
-      return rejectWithValue(response.message || '배지 획득에 실패했습니다.')
+
+      return rejectWithValue(response.message || "Failed to unlock achievement.")
     } catch (error) {
-      return rejectWithValue(error.message || '배지 획득 중 오류가 발생했습니다.')
+      return rejectWithValue(error.message || "Error occurred while unlocking achievement.")
     }
-  }
+  },
 )
 
-export const checkLevelUp = createAsyncThunk(
-  'gamification/checkLevelUp',
-  async (_, { rejectWithValue, getState }) => {
-    try {
-      const state = getState()
-      const currentXP = state.gamification.totalXP
-      
-      const response = await gamificationAPI.checkLevelUp({ currentXP })
-      
-      if (response.status === 'success' && response.data.leveled_up) {
-        const { new_level, new_league } = response.data
-        
-        gamificationEvents.emitLevelUp(response.data)
-        
-        // 레벨업 토스트
-        toast.success(`🎊 레벨 ${new_level} 달성!`, {
-          icon: '🌟',
+export const checkLevelUp = createAsyncThunk("gamification/checkLevelUp", async (_, { rejectWithValue, getState }) => {
+  try {
+    const state = getState()
+    const currentXP = state.gamification.totalXP
+
+    const response = await gamificationAPI.checkLevelUp({ currentXP })
+
+    if (response.status === "success" && response.data.leveled_up) {
+      const { new_level, new_league } = response.data
+
+      gamificationEvents.emitLevelUp(response.data)
+
+      // Level up toast
+      toast.success(`🎊 Level ${new_level} reached!`, {
+        icon: "🌟",
+        duration: 5000,
+        style: {
+          background: "#EDE9FE",
+          color: "#5B21B6",
+        },
+      })
+
+      // League promotion toast
+      if (new_league) {
+        toast.success(`👑 Promoted to ${new_league} league!`, {
+          icon: "🏆",
           duration: 5000,
           style: {
-            background: '#EDE9FE',
-            color: '#5B21B6'
-          }
+            background: "#FEF3C7",
+            color: "#92400E",
+          },
         })
-        
-        // 리그 승급 토스트
-        if (new_league) {
-          toast.success(`👑 ${new_league} 리그 진출!`, {
-            icon: '🏆',
-            duration: 5000,
-            style: {
-              background: '#FEF3C7',
-              color: '#92400E'
-            }
-          })
-        }
-        
-        return response.data
       }
-      
-      return { leveled_up: false }
-    } catch (error) {
-      return rejectWithValue(error.message || '레벨 확인 중 오류가 발생했습니다.')
-    }
-  }
-)
 
-// 초기 상태
+      return response.data
+    }
+
+    return { leveled_up: false }
+  } catch (error) {
+    return rejectWithValue(error.message || "Error occurred while checking level up.")
+  }
+})
+
+// Initial state
 const initialState = {
-  // 사용자 게임화 데이터
+  // User gamification data
   totalXP: 0,
   weeklyXP: 0,
   currentLevel: 1,
-  currentLeague: 'bronze',
+  currentLeague: "bronze",
   streakDays: 0,
   longestStreak: 0,
-  
-  // 배지 및 업적
+
+  // Badges and achievements
   achievements: [],
   unlockedAchievements: [],
-  
-  // 리더보드
+
+  // Leaderboard
   leaderboard: [],
   userRank: null,
-  
-  // 통계
+
+  // Statistics
   stats: {
     totalActivities: 0,
     totalStudyTime: 0,
     averageScore: 0,
-    completedLessons: 0
+    completedLessons: 0,
   },
-  
-  // 로딩 상태
+
+  // Loading states
   isLoading: false,
   isXPUpdateLoading: false,
   isStreakUpdateLoading: false,
@@ -216,26 +256,26 @@ const initialState = {
   isStatsLoading: false,
   isAchievementLoading: false,
   isLevelCheckLoading: false,
-  
-  // 에러 상태
+
+  // Error states
   error: null,
   xpError: null,
   streakError: null,
   leaderboardError: null,
   statsError: null,
   achievementError: null,
-  
-  // 성공 상태
+
+  // Success states
   recentXPGain: null,
   recentAchievement: null,
   recentLevelUp: null,
-  
-  // 기타
+
+  // Other
   lastActivityTime: null,
   dailyGoalProgress: 0,
   weeklyGoalProgress: 0,
-  
-  // UI 상태
+
+  // UI states
   showXPAnimation: false,
   showLevelUpModal: false,
   showAchievementModal: false,
@@ -243,10 +283,26 @@ const initialState = {
 
 // Redux Slice
 const gamificationSlice = createSlice({
-  name: 'gamification',
+  name: "gamification",
   initialState,
   reducers: {
-    // 에러 클리어
+    // Action to set backend data
+    setFromBackend: (state, action) => {
+      const { totalXP, currentLevel, streakDays, currentLeague, achievements, weeklyXP, lastActivityDate } =
+        action.payload
+
+      if (totalXP !== undefined) state.totalXP = totalXP
+      if (currentLevel !== undefined) state.currentLevel = currentLevel
+      if (streakDays !== undefined) state.streakDays = streakDays
+      if (currentLeague !== undefined) state.currentLeague = currentLeague
+      if (achievements !== undefined) state.achievements = achievements
+      if (weeklyXP !== undefined) state.weeklyXP = weeklyXP
+      if (lastActivityDate !== undefined) state.lastActivityDate = lastActivityDate
+
+      state.error = null
+    },
+
+    // Clear errors
     clearErrors: (state) => {
       state.error = null
       state.xpError = null
@@ -255,54 +311,54 @@ const gamificationSlice = createSlice({
       state.statsError = null
       state.achievementError = null
     },
-    
-    // 성공 상태 리셋
+
+    // Reset success states
     resetSuccessStates: (state) => {
       state.recentXPGain = null
       state.recentAchievement = null
       state.recentLevelUp = null
     },
-    
-    // UI 상태 업데이트
+
+    // Update UI states
     setShowXPAnimation: (state, action) => {
       state.showXPAnimation = action.payload
     },
-    
+
     setShowLevelUpModal: (state, action) => {
       state.showLevelUpModal = action.payload
     },
-    
+
     setShowAchievementModal: (state, action) => {
       state.showAchievementModal = action.payload
     },
-    
-    // 실시간 데이터 업데이트
+
+    // Update real-time data
     updateUserRank: (state, action) => {
       state.userRank = action.payload
     },
-    
+
     updateDailyProgress: (state, action) => {
       state.dailyGoalProgress = action.payload
     },
-    
+
     updateWeeklyProgress: (state, action) => {
       state.weeklyGoalProgress = action.payload
     },
-    
-    // 활동 시간 업데이트
+
+    // Update last activity time
     setLastActivityTime: (state) => {
-      state.lastActivityTime = new Date().toISOString()
+      state.lastActivityDate = new Date().toISOString()
     },
-    
-    // 임시 XP 표시 (애니메이션용)
+
+    // Temporary XP display (for animation)
     setTempXPGain: (state, action) => {
       state.recentXPGain = action.payload
       state.showXPAnimation = true
-    }
+    },
   },
-  
+
   extraReducers: (builder) => {
-    // XP 업데이트
+    // XP update
     builder
       .addCase(updateXP.pending, (state) => {
         state.isXPUpdateLoading = true
@@ -310,11 +366,14 @@ const gamificationSlice = createSlice({
       })
       .addCase(updateXP.fulfilled, (state, action) => {
         state.isXPUpdateLoading = false
-        state.totalXP = action.payload.total_xp
-        state.weeklyXP = action.payload.weekly_xp
-        state.currentLevel = action.payload.current_level
-        state.currentLeague = action.payload.current_league
-        state.recentXPGain = action.payload.xp_gained
+        const data = action.payload
+
+        state.totalXP = data.total_xp || data.totalXP
+        state.weeklyXP = data.weekly_xp || data.weeklyXP
+        // Calculate currentLevel based on received totalXP
+        state.currentLevel = calculateLevelFromXP(state.totalXP)
+        state.currentLeague = data.current_league || data.currentLeague
+        state.recentXPGain = data.xp_gained || data.xpGained
         state.lastActivityTime = new Date().toISOString()
         state.xpError = null
       })
@@ -322,8 +381,8 @@ const gamificationSlice = createSlice({
         state.isXPUpdateLoading = false
         state.xpError = action.payload
       })
-    
-    // 연속 학습 업데이트
+
+    // Streak update
     builder
       .addCase(updateStreak.pending, (state) => {
         state.isStreakUpdateLoading = true
@@ -331,8 +390,9 @@ const gamificationSlice = createSlice({
       })
       .addCase(updateStreak.fulfilled, (state, action) => {
         state.isStreakUpdateLoading = false
-        state.streakDays = action.payload.streak_days
-        state.longestStreak = action.payload.longest_streak
+        const data = action.payload
+        state.streakDays = data.streak_days || data.streakDays
+        state.longestStreak = data.longest_streak || data.longestStreak
         state.lastActivityTime = new Date().toISOString()
         state.streakError = null
       })
@@ -340,8 +400,8 @@ const gamificationSlice = createSlice({
         state.isStreakUpdateLoading = false
         state.streakError = action.payload
       })
-    
-    // 리더보드 조회
+
+    // Leaderboard fetch
     builder
       .addCase(fetchLeaderboard.pending, (state) => {
         state.isLeaderboardLoading = true
@@ -357,8 +417,8 @@ const gamificationSlice = createSlice({
         state.isLeaderboardLoading = false
         state.leaderboardError = action.payload
       })
-    
-    // 사용자 통계 조회
+
+    // User stats fetch
     builder
       .addCase(fetchUserStats.pending, (state) => {
         state.isStatsLoading = true
@@ -366,17 +426,29 @@ const gamificationSlice = createSlice({
       })
       .addCase(fetchUserStats.fulfilled, (state, action) => {
         state.isStatsLoading = false
-        state.stats = action.payload.stats
-        state.dailyGoalProgress = action.payload.daily_progress
-        state.weeklyGoalProgress = action.payload.weekly_progress
+        const data = action.payload
+
+        state.totalXP = data.total_xp || data.totalXP
+        state.weeklyXP = data.weekly_xp || data.weeklyXP
+        // Calculate currentLevel based on received totalXP
+        state.currentLevel = calculateLevelFromXP(state.totalXP)
+        state.currentLeague = data.current_league || data.currentLeague
+        state.streakDays = data.streak_days || data.streakDays
+        state.longestStreak = data.longest_streak || data.longestStreak
+        state.achievements = data.achievements || []
+        state.unlockedAchievements = data.unlocked_achievements || data.unlockedAchievements || []
+        state.stats = data.stats
+        state.dailyGoalProgress = data.daily_progress
+        state.weeklyGoalProgress = data.weekly_progress
+        state.lastActivityTime = data.last_activity_date || data.lastActivityDate
         state.statsError = null
       })
       .addCase(fetchUserStats.rejected, (state, action) => {
         state.isStatsLoading = false
         state.statsError = action.payload
       })
-    
-    // 배지 획득
+
+    // Unlock achievement
     builder
       .addCase(unlockAchievement.pending, (state) => {
         state.isAchievementLoading = true
@@ -384,8 +456,9 @@ const gamificationSlice = createSlice({
       })
       .addCase(unlockAchievement.fulfilled, (state, action) => {
         state.isAchievementLoading = false
-        state.unlockedAchievements.push(action.payload.achievement)
-        state.recentAchievement = action.payload.achievement
+        const data = action.payload
+        state.unlockedAchievements.push(data.achievement)
+        state.recentAchievement = data.achievement
         state.showAchievementModal = true
         state.achievementError = null
       })
@@ -393,15 +466,14 @@ const gamificationSlice = createSlice({
         state.isAchievementLoading = false
         state.achievementError = action.payload
       })
-    
-    // 레벨 확인
+
+    // Level check
     builder
       .addCase(checkLevelUp.pending, (state) => {
         state.isLevelCheckLoading = true
       })
       .addCase(checkLevelUp.fulfilled, (state, action) => {
         state.isLevelCheckLoading = false
-        
         if (action.payload.leveled_up) {
           state.currentLevel = action.payload.new_level
           state.currentLeague = action.payload.new_league || state.currentLeague
@@ -415,7 +487,7 @@ const gamificationSlice = createSlice({
   },
 })
 
-// 액션 내보내기
+// Export actions
 export const {
   clearErrors,
   resetSuccessStates,
@@ -426,10 +498,10 @@ export const {
   updateDailyProgress,
   updateWeeklyProgress,
   setLastActivityTime,
-  setTempXPGain
+  setTempXPGain,
 } = gamificationSlice.actions
 
-// 셀렉터들
+// Selectors
 export const selectGamification = (state) => state.gamification
 export const selectTotalXP = (state) => state.gamification.totalXP
 export const selectCurrentLevel = (state) => state.gamification.currentLevel
@@ -440,5 +512,5 @@ export const selectLeaderboard = (state) => state.gamification.leaderboard
 export const selectUserRank = (state) => state.gamification.userRank
 export const selectIsLoading = (state) => state.gamification.isLoading
 
-// 리듀서 내보내기
+// Export reducer
 export default gamificationSlice.reducer

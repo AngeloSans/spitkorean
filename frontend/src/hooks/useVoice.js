@@ -3,23 +3,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import toast from 'react-hot-toast';
 
-// Redux 액션들
+// Redux actions
 import { setRecording, setMuted } from '@store/slices/talkSlice';
 import { analyzePronunciation } from '@store/slices/feedbackSlice';
 
-// 사용자 정보
+// User info
 import { selectUser } from '@store/slices/authSlice';
 
 /**
- * 음성 처리 통합 훅
- * WebRTC 녹음, Whisper 인식, TTS 재생, 발음 분석을 통합 관리
- * Talk Like You Mean It, Korean Journey 등에서 공용 사용
+ * Unified voice processing hook
+ * Manages WebRTC recording, Whisper recognition, TTS playback, and pronunciation analysis
+ * Shared across Talk Like You Mean It, Korean Journey, etc.
  */
 const useVoice = () => {
   const dispatch = useDispatch();
   const user = useSelector(selectUser);
 
-  // 로컬 상태
+  // Local states
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlayingTTS, setIsPlayingTTS] = useState(false);
@@ -29,7 +29,7 @@ const useVoice = () => {
   const [isSupported, setIsSupported] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
 
-  // 설정
+  // Settings
   const [voiceSettings, setVoiceSettings] = useState({
     sampleRate: 44100,
     channelCount: 1,
@@ -41,9 +41,9 @@ const useVoice = () => {
     ttsPitch: 0.0, // -20.0 ~ 20.0
     autoPlayTTS: false,
     recordingFormat: 'webm', // webm, mp4, wav
-    maxRecordingTime: 60000, // 60초
-    minRecordingTime: 1000, // 1초
-    pronunciationThreshold: 70 // 발음 점수 임계값
+    maxRecordingTime: 60000, // 60 seconds
+    minRecordingTime: 1000,  // 1 second
+    pronunciationThreshold: 70 // pronunciation score threshold
   });
 
   // Refs
@@ -56,7 +56,7 @@ const useVoice = () => {
   const recordingTimerRef = useRef(null);
   const levelCheckIntervalRef = useRef(null);
 
-  // 브라우저 지원 확인
+  // Check browser support
   const checkBrowserSupport = useCallback(() => {
     const supported = {
       mediaRecorder: typeof MediaRecorder !== 'undefined',
@@ -70,13 +70,13 @@ const useVoice = () => {
 
     if (!isFullySupported) {
       const missing = Object.entries(supported)
-        .filter(([_, isSupported]) => !isSupported)
+        .filter(([_, supported]) => !supported)
         .map(([feature]) => feature);
       
-      setErrorMessage(`브라우저가 다음 기능을 지원하지 않습니다: ${missing.join(', ')}`);
+      setErrorMessage(`Browser does not support the following features: ${missing.join(', ')}`);
     }
 
-    // 지원되는 MIME 타입 확인
+    // Check supported MIME types
     const formats = ['webm', 'mp4', 'wav'].filter(format => {
       const mimeTypes = {
         webm: ['audio/webm', 'audio/webm;codecs=opus'],
@@ -94,7 +94,7 @@ const useVoice = () => {
     return isFullySupported;
   }, []);
 
-  // 마이크 권한 요청
+  // Request microphone permission
   const requestMicrophonePermission = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -107,21 +107,21 @@ const useVoice = () => {
         }
       });
 
-      // 권한 획득 후 즉시 스트림 해제
+      // Immediately stop tracks after permission granted
       stream.getTracks().forEach(track => track.stop());
       
-      toast.success('마이크 권한이 허용되었습니다.');
+      toast.success('Microphone permission granted.');
       return true;
     } catch (error) {
-      console.error('마이크 권한 요청 실패:', error);
+      console.error('Microphone permission request failed:', error);
       
-      let errorMsg = '마이크 권한을 허용해주세요.';
+      let errorMsg = 'Please allow microphone access.';
       if (error.name === 'NotFoundError') {
-        errorMsg = '마이크를 찾을 수 없습니다.';
+        errorMsg = 'No microphone found.';
       } else if (error.name === 'NotAllowedError') {
-        errorMsg = '마이크 권한이 거부되었습니다.';
+        errorMsg = 'Microphone access denied.';
       } else if (error.name === 'NotReadableError') {
-        errorMsg = '마이크가 사용 중입니다.';
+        errorMsg = 'Microphone is currently in use.';
       }
       
       setErrorMessage(errorMsg);
@@ -130,7 +130,7 @@ const useVoice = () => {
     }
   }, [voiceSettings]);
 
-  // 오디오 레벨 모니터링 시작
+  // Start monitoring audio level
   const startAudioLevelMonitoring = useCallback((stream) => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -148,7 +148,7 @@ const useVoice = () => {
         if (analyserRef.current && isRecording) {
           analyserRef.current.getByteFrequencyData(dataArray);
           
-          // 평균 볼륨 계산
+          // Calculate average volume
           const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length;
           const normalizedLevel = Math.min(average / 128, 1);
           
@@ -160,11 +160,11 @@ const useVoice = () => {
       
       checkLevel();
     } catch (error) {
-      console.error('오디오 레벨 모니터링 시작 실패:', error);
+      console.error('Failed to start audio level monitoring:', error);
     }
   }, [isRecording]);
 
-  // 오디오 레벨 모니터링 중지
+  // Stop monitoring audio level
   const stopAudioLevelMonitoring = useCallback(() => {
     if (levelCheckIntervalRef.current) {
       cancelAnimationFrame(levelCheckIntervalRef.current);
@@ -179,15 +179,15 @@ const useVoice = () => {
     setAudioLevel(0);
   }, []);
 
-  // 녹음 시작
+  // Start recording
   const startRecording = useCallback(async () => {
     if (!isSupported) {
-      toast.error('브라우저에서 음성 녹음을 지원하지 않습니다.');
+      toast.error('Voice recording is not supported by this browser.');
       return false;
     }
 
     if (isRecording) {
-      toast.warn('이미 녹음 중입니다.');
+      toast.warn('Recording is already in progress.');
       return false;
     }
 
@@ -196,7 +196,7 @@ const useVoice = () => {
       setIsRecording(true);
       dispatch(setRecording(true));
 
-      // 마이크 스트림 획득
+      // Get microphone stream
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: voiceSettings.sampleRate,
@@ -210,7 +210,7 @@ const useVoice = () => {
       audioStreamRef.current = stream;
       audioChunksRef.current = [];
 
-      // MIME 타입 결정
+      // Determine MIME type
       const format = voiceSettings.recordingFormat;
       const mimeTypes = {
         webm: ['audio/webm;codecs=opus', 'audio/webm'],
@@ -227,16 +227,16 @@ const useVoice = () => {
       }
 
       if (!selectedMimeType) {
-        throw new Error(`${format} 형식을 지원하지 않습니다.`);
+        throw new Error(`${format} format is not supported.`);
       }
 
-      // MediaRecorder 설정
+      // Setup MediaRecorder
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType: selectedMimeType,
         audioBitsPerSecond: 128000
       });
 
-      // 이벤트 리스너
+      // Event listeners
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
@@ -247,7 +247,7 @@ const useVoice = () => {
         setIsRecording(false);
         dispatch(setRecording(false));
         
-        // 스트림 정리
+        // Cleanup stream
         if (audioStreamRef.current) {
           audioStreamRef.current.getTracks().forEach(track => track.stop());
           audioStreamRef.current = null;
@@ -264,42 +264,42 @@ const useVoice = () => {
       };
 
       mediaRecorderRef.current.onerror = (event) => {
-        console.error('MediaRecorder 오류:', event.error);
-        toast.error('녹음 중 오류가 발생했습니다.');
+        console.error('MediaRecorder error:', event.error);
+        toast.error('An error occurred during recording.');
         stopRecording();
       };
 
-      // 녹음 시작
-      mediaRecorderRef.current.start(100); // 100ms마다 데이터 수집
+      // Start recording
+      mediaRecorderRef.current.start(100); // collect data every 100ms
 
-      // 오디오 레벨 모니터링 시작
+      // Start audio level monitoring
       startAudioLevelMonitoring(stream);
 
-      // 녹음 시간 타이머
+      // Recording duration timer
       const startTime = Date.now();
       recordingTimerRef.current = setInterval(() => {
         const duration = Date.now() - startTime;
         setRecordingDuration(duration);
         
-        // 최대 녹음 시간 체크
+        // Check max recording time
         if (duration >= voiceSettings.maxRecordingTime) {
           stopRecording();
-          toast.warn(`최대 녹음 시간(${voiceSettings.maxRecordingTime / 1000}초)에 도달했습니다.`);
+          toast.warn(`Reached max recording time (${voiceSettings.maxRecordingTime / 1000} seconds).`);
         }
       }, 100);
 
-      toast.success('녹음이 시작되었습니다.');
+      toast.success('Recording started.');
       return true;
     } catch (error) {
-      console.error('녹음 시작 실패:', error);
+      console.error('Failed to start recording:', error);
       setIsRecording(false);
       dispatch(setRecording(false));
       
-      let errorMsg = '녹음을 시작할 수 없습니다.';
+      let errorMsg = 'Cannot start recording.';
       if (error.name === 'NotAllowedError') {
-        errorMsg = '마이크 권한을 허용해주세요.';
+        errorMsg = 'Please allow microphone access.';
       } else if (error.name === 'NotFoundError') {
-        errorMsg = '마이크를 찾을 수 없습니다.';
+        errorMsg = 'No microphone found.';
       }
       
       setErrorMessage(errorMsg);
@@ -308,7 +308,7 @@ const useVoice = () => {
     }
   }, [isSupported, isRecording, voiceSettings, dispatch, startAudioLevelMonitoring, stopAudioLevelMonitoring]);
 
-  // 녹음 중지
+  // Stop recording
   const stopRecording = useCallback(async () => {
     if (!isRecording || !mediaRecorderRef.current) {
       return null;
@@ -318,33 +318,33 @@ const useVoice = () => {
       const originalOnStop = mediaRecorderRef.current.onstop;
       
       mediaRecorderRef.current.onstop = async (event) => {
-        // 원래 onstop 핸들러 실행
+        // Call original onstop handler
         if (originalOnStop) {
           originalOnStop(event);
         }
 
         try {
-          // 녹음 시간 체크
+          // Check minimum recording time
           if (recordingDuration < voiceSettings.minRecordingTime) {
-            toast.warn(`최소 ${voiceSettings.minRecordingTime / 1000}초 이상 녹음해주세요.`);
+            toast.warn(`Please record at least ${voiceSettings.minRecordingTime / 1000} seconds.`);
             resolve(null);
             return;
           }
 
-          // 오디오 Blob 생성
+          // Create audio blob
           const audioBlob = new Blob(audioChunksRef.current, {
             type: mediaRecorderRef.current.mimeType
           });
 
           if (audioBlob.size === 0) {
-            throw new Error('녹음된 데이터가 없습니다.');
+            throw new Error('No recorded data available.');
           }
 
-          toast.success(`녹음 완료 (${Math.round(recordingDuration / 1000)}초)`);
+          toast.success(`Recording complete (${Math.round(recordingDuration / 1000)} seconds)`);
           resolve(audioBlob);
         } catch (error) {
-          console.error('녹음 완료 처리 실패:', error);
-          toast.error('녹음 완료 처리에 실패했습니다.');
+          console.error('Failed to process recording:', error);
+          toast.error('Failed to process recording.');
           reject(error);
         }
       };
@@ -353,27 +353,29 @@ const useVoice = () => {
     });
   }, [isRecording, recordingDuration, voiceSettings.minRecordingTime]);
 
-  // TTS 음성 재생
+  // Play TTS audio
   const playTTS = useCallback(async (text, options = {}) => {
     if (!text || !text.trim()) {
-      toast.error('재생할 텍스트가 없습니다.');
+      toast.error('No text to play.');
       return false;
     }
 
     if (isPlayingTTS) {
-      toast.warn('이미 음성이 재생 중입니다.');
+      toast.warn('TTS is already playing.');
       return false;
     }
 
     try {
       setIsPlayingTTS(true);
 
-      // 백엔드 TTS API 호출 (tts_service.py와 연동)
+      console.log('Sending token for TTS:', localStorage.getItem('auth_token'));
+
+      // Call backend TTS API (tts_service.py)
       const response = await fetch('/api/v1/common/tts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${user?.token || localStorage.getItem('auth_token') || ''}`
         },
         body: JSON.stringify({
           text: text.trim(),
@@ -385,14 +387,14 @@ const useVoice = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`TTS API 오류: ${response.status}`);
+        throw new Error(`TTS API error: ${response.status}`);
       }
 
       const audioArrayBuffer = await response.arrayBuffer();
       const audioBlob = new Blob([audioArrayBuffer], { type: 'audio/mp3' });
       const audioUrl = URL.createObjectURL(audioBlob);
 
-      // 오디오 재생
+      // Play audio
       if (ttsAudioRef.current) {
         ttsAudioRef.current.pause();
         URL.revokeObjectURL(ttsAudioRef.current.src);
@@ -406,23 +408,23 @@ const useVoice = () => {
       };
 
       ttsAudioRef.current.onerror = (error) => {
-        console.error('TTS 재생 오류:', error);
+        console.error('TTS playback error:', error);
         setIsPlayingTTS(false);
         URL.revokeObjectURL(audioUrl);
-        toast.error('음성 재생에 실패했습니다.');
+        toast.error('Failed to play audio.');
       };
 
       await ttsAudioRef.current.play();
       return true;
     } catch (error) {
-      console.error('TTS 재생 실패:', error);
+      console.error('Failed to play TTS:', error);
       setIsPlayingTTS(false);
-      toast.error('음성 재생에 실패했습니다.');
+      toast.error('Failed to play audio.');
       return false;
     }
   }, [isPlayingTTS, voiceSettings]);
 
-  // TTS 재생 중지
+  // Stop TTS playback
   const stopTTS = useCallback(() => {
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause();
@@ -431,17 +433,17 @@ const useVoice = () => {
     }
   }, []);
 
-  // 발음 분석 (Korean Journey, Talk에서 사용)
+  // Pronunciation analysis (used in Korean Journey, Talk)
   const analyzePronunciationAudio = useCallback(async (audioBlob, originalText, level = 'beginner') => {
     if (!audioBlob || !originalText) {
-      toast.error('분석할 데이터가 없습니다.');
+      toast.error('No data to analyze.');
       return null;
     }
 
     try {
       setIsProcessing(true);
 
-      // 백엔드 발음 분석 API 호출 (whisper_service.py와 연동)
+      // Call backend pronunciation analysis API (whisper_service.py)
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
       formData.append('original_text', originalText);
@@ -456,7 +458,7 @@ const useVoice = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`발음 분석 API 오류: ${response.status}`);
+        throw new Error(`Pronunciation analysis API error: ${response.status}`);
       }
 
       const result = await response.json();
@@ -464,7 +466,7 @@ const useVoice = () => {
       if (result.status === 'success') {
         const analysisData = result.data;
 
-        // Redux에 발음 분석 결과 저장
+        // Save analysis to Redux
         await dispatch(analyzePronunciation({
           originalText,
           transcribedText: analysisData.transcribed_text,
@@ -473,11 +475,11 @@ const useVoice = () => {
           nativeLanguage: user?.profile?.nativeLanguage || 'en'
         })).unwrap();
 
-        // 발음 점수에 따른 피드백
+        // Feedback based on score
         if (analysisData.pronunciation_score >= voiceSettings.pronunciationThreshold) {
-          toast.success(`훌륭한 발음입니다! (${analysisData.pronunciation_score}점)`);
+          toast.success(`Great pronunciation! (${analysisData.pronunciation_score} points)`);
         } else {
-          toast(`발음을 개선해보세요. (${analysisData.pronunciation_score}점)`, {
+          toast(`Try improving your pronunciation. (${analysisData.pronunciation_score} points)`, {
             icon: '💪',
             duration: 3000
           });
@@ -490,27 +492,27 @@ const useVoice = () => {
           improvements: analysisData.improvement_suggestions
         };
       } else {
-        throw new Error(result.message || '발음 분석에 실패했습니다.');
+        throw new Error(result.message || 'Pronunciation analysis failed.');
       }
     } catch (error) {
-      console.error('발음 분석 실패:', error);
-      toast.error('발음 분석에 실패했습니다.');
+      console.error('Pronunciation analysis failed:', error);
+      toast.error('Pronunciation analysis failed.');
       return null;
     } finally {
       setIsProcessing(false);
     }
   }, [dispatch, user, voiceSettings.pronunciationThreshold]);
 
-  // 음성 설정 업데이트
+  // Update voice settings
   const updateVoiceSettings = useCallback((newSettings) => {
     setVoiceSettings(prev => ({ ...prev, ...newSettings }));
     
     if (newSettings.ttsVoiceGender) {
-      toast.success(`음성 성별이 ${newSettings.ttsVoiceGender === 'female' ? '여성' : '남성'}으로 변경되었습니다.`);
+      toast.success(`Voice gender changed to ${newSettings.ttsVoiceGender === 'female' ? 'female' : 'male'}.`);
     }
   }, []);
 
-  // 음성 설정 초기화
+  // Reset voice settings
   const resetVoiceSettings = useCallback(() => {
     setVoiceSettings({
       sampleRate: 44100,
@@ -528,36 +530,36 @@ const useVoice = () => {
       pronunciationThreshold: 70
     });
     
-    toast.success('음성 설정이 초기화되었습니다.');
+    toast.success('Voice settings have been reset.');
   }, []);
 
-  // 마이크 테스트
+  // Microphone test
   const testMicrophone = useCallback(async () => {
     try {
-      toast.loading('마이크를 테스트하는 중...');
+      toast.loading('Testing microphone...');
       
       const success = await startRecording();
       if (success) {
-        // 3초 후 자동 중지
+        // Auto stop after 3 seconds
         setTimeout(async () => {
           const audioBlob = await stopRecording();
           if (audioBlob) {
-            toast.success('마이크가 정상적으로 작동합니다!');
+            toast.success('Microphone is working properly!');
           }
         }, 3000);
       }
     } catch (error) {
-      console.error('마이크 테스트 실패:', error);
-      toast.error('마이크 테스트에 실패했습니다.');
+      console.error('Microphone test failed:', error);
+      toast.error('Microphone test failed.');
     }
   }, [startRecording, stopRecording]);
 
-  // 초기화 및 정리
+  // Cleanup and initialization
   useEffect(() => {
     checkBrowserSupport();
 
     return () => {
-      // 정리 작업
+      // Cleanup
       if (mediaRecorderRef.current && isRecording) {
         mediaRecorderRef.current.stop();
       }
@@ -585,7 +587,7 @@ const useVoice = () => {
   }, [checkBrowserSupport, isRecording, dispatch, stopAudioLevelMonitoring]);
 
   return {
-    // 상태
+    // States
     isRecording,
     isProcessing,
     isPlayingTTS,
@@ -596,27 +598,27 @@ const useVoice = () => {
     errorMessage,
     voiceSettings,
     
-    // 녹음 관련
+    // Recording controls
     startRecording,
     stopRecording,
     requestMicrophonePermission,
     testMicrophone,
     
-    // TTS 관련
+    // TTS controls
     playTTS,
     stopTTS,
     
-    // 발음 분석
+    // Pronunciation analysis
     analyzePronunciationAudio,
     
-    // 설정 관리
+    // Settings management
     updateVoiceSettings,
     resetVoiceSettings,
     
-    // 유틸리티
+    // Utilities
     checkBrowserSupport,
     
-    // 계산된 값들
+    // Calculated values
     recordingProgress: Math.min((recordingDuration / voiceSettings.maxRecordingTime) * 100, 100),
     formattedDuration: `${Math.floor(recordingDuration / 1000)}:${String(Math.floor((recordingDuration % 1000) / 10)).padStart(2, '0')}`,
     canRecord: isSupported && !isRecording && !isProcessing,

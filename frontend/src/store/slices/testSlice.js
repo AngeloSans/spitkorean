@@ -547,6 +547,6 @@ export const selectRecentResults = (state, limit = 5) => {
 export const selectWeaknesses = (state) => {
   return state.test.progress.weaknesses;
 };
-
+export const selectUsage = (state) => state.test.usage
 // 리듀서 기본 내보내기
 export default testSlice.reducer;

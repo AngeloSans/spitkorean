@@ -62,10 +62,10 @@ const PlanCard = ({
   const monthlySavings = billingPeriod === 'annual' ? (basePrice - finalPrice) : 0;
 
   // 구독 상태 확인
-  const isSubscribed = currentSubscriptions?.includes(plan?.id);
-  const hasPartialSubscription = isBundle && plan?.products?.some(productId => 
-    currentSubscriptions?.includes(productId)
-  );
+  const isSubscribed = currentSubscriptions?.includes(plan?.id?.toLowerCase().trim());
+  const hasPartialSubscription = isBundle && plan?.products?.some(productId =>
+  currentSubscriptions?.includes(productId?.toLowerCase().trim())
+);
 
   // 카드 스타일
   const getCardStyle = () => {

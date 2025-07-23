@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Redis - OBRIGATÓRIO para Celery
+  # Redis - REQUIRED for Celery
   redis:
     image: redis:7-alpine
     container_name: spitkorean-redis
@@ -17,7 +17,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Backend - USA SEU DOCKERFILE
+  # Backend - USES YOUR DOCKERFILE
   backend:
     build: 
       context: .
@@ -46,7 +46,7 @@ services:
       - spitkorean-network
     user: app
 
-  # Celery Worker - Mesma imagem do backend
+  # Celery Worker - Same image as backend
   celery-worker:
     build: 
       context: .
@@ -75,7 +75,7 @@ services:
       - spitkorean-network
     user: app
 
-  # Celery Beat - Agendador de tarefas
+  # Celery Beat - Task scheduler
   celery-beat:
     build: 
       context: .
@@ -99,7 +99,7 @@ services:
       - spitkorean-network
     user: app
 
-  # Flower - Monitoramento Celery (Opcional)
+  # Flower - Celery monitoring (Optional)
   flower:
     build: 
       context: .

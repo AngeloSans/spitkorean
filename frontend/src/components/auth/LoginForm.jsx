@@ -119,6 +119,7 @@ const LoginForm = ({
 
   // 폼 제출 핸들러
   const onSubmit = async (data) => {
+    console.log('Tentando logar com:', data);
     try {
       // 최종 유효성 검사
       const emailValid = validators.required(data.email) && validators.email(data.email)
@@ -142,6 +143,8 @@ const LoginForm = ({
         showSuccessToast: true
       })
       
+      console.log('Login result:', result)
+
       if (result.success) {
         reset()
         onSuccess?.(result.user)

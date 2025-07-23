@@ -1,4 +1,4 @@
-from quart import Blueprint, request, jsonify, current_app
+from quart import Blueprint, request, jsonify, current_app, g
 from bson.objectid import ObjectId
 import bcrypt
 from datetime import datetime
@@ -8,17 +8,50 @@ from app.models.user import User
 from app.models.subscription import Subscription
 from app.utils.response import api_response, error_response
 from app.core.auth import require_auth
+from app.services import tts_service
+
 gpt_service = GPTService()
 
 common_routes = Blueprint('common', __name__, url_prefix='/api/v1/common')
+
+@common_routes.route('/tts', methods=['POST'])
+async def generate_tts():
+    data = await request.json
+
+    if not data or not data.get('text'):
+        return error_response("Text input is required", 400)
+
+    text = data['text']
+    voice = data.get('voice', 'default')  # Example: choose voice
+    speed = data.get('speed', 1.0)        # Speech speed
+
+    # You can include usage limits, permission checks, etc., if you want
+
+    try:
+        # Generate audio (base64, URL, or file path)
+        audio_data = await tts_service.generate_audio(
+            text=text,
+            voice=voice,
+            speed=speed,
+        )
+    except Exception as e:
+        current_app.logger.error(f"TTS generation failed: {e}")
+        return error_response("An error occurred during TTS generation", 500)
+
+    # Return the generated audio (can be base64, URL, etc.)
+    return api_response({
+        "audio": audio_data,
+        "message": "Audio successfully generated"
+    })
+
 
 @common_routes.route('/streak', methods=['GET'])
 @require_auth
 async def get_streak():
     """
-    연속 학습 정보 조회 API (GET)
+    Continuous learning streak information API (GET)
     """
-    user_id = request.user_id
+    user_id = g.user_id
 
     try:
         db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
@@ -28,36 +61,36 @@ async def get_streak():
             return api_response({
                 "streak_days": 0,
                 "last_updated": None
-            }, "연속 학습 정보가 없습니다")
+            }, "No continuous learning information found")
 
         response_data = {
             "streak_days": streak_data.get("days", 0),
             "last_updated": streak_data.get("last_updated")
         }
 
-        return api_response(response_data, "연속 학습 정보가 성공적으로 조회되었습니다")
+        return api_response(response_data, "Continuous learning information retrieved successfully")
 
     except Exception as e:
         print(f"❌ Error fetching streak: {str(e)}")
-        return error_response("연속 학습 정보를 가져오는 중 오류가 발생했습니다", 500)
+        return error_response("Error occurred while fetching continuous learning information", 500)
 
 @common_routes.route('/streak', methods=['POST'])
 @require_auth
 async def update_streak():
-    """연속 학습 일수 업데이트 API"""
-    user_id = request.user_id
+    """Continuous learning streak update API"""
+    user_id = g.user_id
     
-    # 게임화 데이터베이스에서 연속 학습 일수 업데이트
+    # Update continuous learning days in gamification database
     from app.models.common import Common
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     
     result = await Common.update_streak(db, user_id)
     
-    # 이벤트 발행
+    # Publish event
     if result.get("streak_days") > 0:
         await current_app.event_bus.emit_streak_update(user_id, result.get("streak_days"))
     
-    return api_response(result, "연속 학습 정보가 업데이트되었습니다")
+    return api_response(result, "Continuous learning information updated successfully")
 
 ##new routes
 # New routes created because the frontend was calling a route that did not exist
@@ -143,21 +176,21 @@ async def translate_ui():
 @common_routes.route('/gamification', methods=['GET'])
 @require_auth 
 async def get_gamification():
-    """게임화 데이터 조회 API"""
-    user_id = request.user_id
+    """Gamification data retrieval API"""
+    user_id = g.user_id
     
-    # 게임화 데이터베이스에서 사용자 정보 조회
+    # Get user information from gamification database
     from app.models.common import Common
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     
     gamification = await Common.get_user_gamification(db, user_id)
     
     if not gamification:
-        # 게임화 데이터가 없으면 생성
+        # Create gamification data if it doesn't exist
         await Common.create_gamification(db, user_id)
         gamification = await Common.get_user_gamification(db, user_id)
     
-    # 필요한 필드만 추출하여 응답
+    # Extract only necessary fields for response
     response_data = {
         "streak_days": gamification.get("streakDays", 0),
         "total_xp": gamification.get("totalXP", 0),
@@ -166,26 +199,26 @@ async def get_gamification():
         "weekly_progress": gamification.get("weeklyProgress", {"xp": 0})
     }
     
-    return api_response(response_data, "게임화 정보를 성공적으로 조회했습니다")
+    return api_response(response_data, "Gamification information retrieved successfully")
 
 @common_routes.route('/league-ranking', methods=['GET'])
 @require_auth 
 async def get_league_ranking():
-    """리그 랭킹 조회 API"""
-    user_id = request.user_id
+    """League ranking retrieval API"""
+    user_id = g.user_id
     
-    # 사용자의 리그 확인
+    # Check user's league
     from app.models.common import Common
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     
     gamification = await Common.get_user_gamification(db, user_id)
     
     if not gamification:
-        return error_response("게임화 정보를 찾을 수 없습니다", 404)
+        return error_response("Gamification information not found", 404)
     
     current_league = gamification.get("currentLeague", "bronze")
     
-    # 같은 리그의 상위 사용자 조회
+    # Get top users in the same league
     pipeline = [
         {"$match": {"currentLeague": current_league}},
         {"$sort": {"weeklyProgress.xp": -1}},
@@ -208,17 +241,17 @@ async def get_league_ranking():
     
     ranking = await db[Common.gamification_collection].aggregate(pipeline).to_list(length=None)
     
-    # 사용자 자신의 순위 계산
+    # Calculate user's own rank
     user_rank = None
     for i, rank in enumerate(ranking):
         if str(rank.get("userId")) == user_id:
             user_rank = i + 1
             break
     
-    # 상위 10명만 반환
+    # Return only top 10
     top_ranking = ranking[:10]
     
-    # 응답 데이터 가공
+    # Format response data
     response_data = {
         "league": current_league,
         "user_rank": user_rank,
@@ -227,97 +260,97 @@ async def get_league_ranking():
         "top_ranking": [
             {
                 "rank": i + 1,
-                "name": item.get("userName", "사용자"),
+                "name": item.get("userName", "User"),
                 "weekly_xp": item.get("weeklyProgress", {}).get("xp", 0),
                 "is_current_user": str(item.get("userId")) == user_id
             } for i, item in enumerate(top_ranking)
         ]
     }
     
-    return api_response(response_data, "리그 랭킹을 성공적으로 조회했습니다")
+    return api_response(response_data, "League ranking retrieved successfully")
 
 @common_routes.route('/subscription/plans', methods=['GET'])
 async def get_subscription_plans():
-    """구독 상품 정보 조회 API"""
+    """Subscription product information API"""
     
-    # 상품 정보
+    # Product information
     plans = [
         {
             "id": "talk",
             "name": "Talk Like You Mean It",
-            "description": "자연스러운 대화 학습에 중점을 둔 플랜. 실제 상황과 같은 대화와 음성 응답을 제공합니다.",
+            "description": "Plan focused on natural conversation learning. Provides real-life conversations and voice responses.",
             "price": 30.00,
             "daily_limit": 60,
             "features": [
-                "AI 튜터와 실시간 대화",
-                "감정 인식 및 피드백",
-                "모국어 해설 지원",
-                "레벨별 맞춤 대화"
+                "Real-time conversation with AI tutor",
+                "Emotion recognition and feedback",
+                "Native language explanation support",
+                "Level-based customized conversations"
             ]
         },
         {
             "id": "drama",
             "name": "Drama Builder",
-            "description": "드라마 기반 문장 구성 학습에 중점을 둔 플랜. 실제 드라마 대사로 문법과 표현을 배웁니다.",
+            "description": "Plan focused on drama-based sentence construction learning. Learn grammar and expressions with actual drama lines.",
             "price": 20.00,
             "daily_limit": 20,
             "features": [
-                "실제 드라마 문장 학습",
-                "문법 피드백",
-                "유사 문장 제시",
-                "발음 평가"
+                "Learning actual drama lines",
+                "Grammar feedback",
+                "Similar sentence suggestions",
+                "Pronunciation evaluation"
             ]
         },
         {
             "id": "test",
             "name": "Test & Study",
-            "description": "TOPIK 시험 준비에 중점을 둔 플랜. 문제 풀이와 체계적인 학습으로 실력을 향상시킵니다.",
+            "description": "Plan focused on TOPIK test preparation. Improve skills through problem solving and systematic learning.",
             "price": 20.00,
             "daily_limit": 20,
             "features": [
-                "TOPIK 모의고사",
-                "문제 자동 생성",
-                "약점 분석",
-                "실전 시험 시뮬레이션"
+                "TOPIK practice tests",
+                "Automatic problem generation",
+                "Weakness analysis",
+                "Real test simulation"
             ]
         },
         {
             "id": "journey",
             "name": "Korean Journey",
-            "description": "한글부터 시작하는 체계적인 학습 플랜. 발음과 읽기에 중점을 두어 기초를 탄탄히 합니다.",
+            "description": "Systematic learning plan starting from Hangul. Focuses on pronunciation and reading to build strong foundation.",
             "price": 30.00,
             "daily_limit": 20,
             "features": [
-                "한글 기초부터 고급 리딩까지",
-                "발음 정확도 분석",
-                "속도 조절 연습",
-                "단계별 리딩 콘텐츠"
+                "From Hangul basics to advanced reading",
+                "Pronunciation accuracy analysis",
+                "Speed control practice",
+                "Step-by-step reading content"
             ]
         }
     ]
     
-    # 번들 패키지
+    # Bundle packages
     bundles = [
         {
             "id": "bundle_2",
-            "name": "2개 선택 패키지",
-            "description": "원하는 상품 2개를 선택하여 10% 할인된 가격에 이용하세요.",
+            "name": "2 Product Bundle",
+            "description": "Choose 2 products you want with 10% discount.",
             "discount": 0.10,
             "min_products": 2,
             "max_products": 2
         },
         {
             "id": "bundle_3",
-            "name": "3개 선택 패키지",
-            "description": "원하는 상품 3개를 선택하여 20% 할인된 가격에 이용하세요.",
+            "name": "3 Product Bundle",
+            "description": "Choose 3 products you want with 20% discount.",
             "discount": 0.20,
             "min_products": 3,
             "max_products": 3
         },
         {
             "id": "bundle_all",
-            "name": "올인원 패키지",
-            "description": "모든 상품을 25% 할인된 가격에 이용하세요.",
+            "name": "All-in-One Package",
+            "description": "Get all products with 25% discount.",
             "discount": 0.25,
             "min_products": 4,
             "max_products": 4,
@@ -330,10 +363,10 @@ async def get_subscription_plans():
         "bundles": bundles
     }
     
-    return api_response(response_data, "구독 상품 정보를 성공적으로 조회했습니다")
+    return api_response(response_data, "Subscription product information retrieved successfully")
 
 def get_product_price(product_id):
-    """상품별 가격 조회"""
+    """Get price by product ID"""
     prices = {
         "talk": 30.00,
         "drama": 20.00,
@@ -343,16 +376,16 @@ def get_product_price(product_id):
     return prices.get(product_id, 0.0)
 
 def get_bundle_discount(product_count):
-    """번들 할인율 조회"""
+    """Get bundle discount rate"""
     discounts = {
-        2: 0.10,  # 10% 할인
-        3: 0.20,  # 20% 할인
-        4: 0.25   # 25% 할인
+        2: 0.10,  # 10% discount
+        3: 0.20,  # 20% discount
+        4: 0.25   # 25% discount
     }
     return discounts.get(product_count, 0.0)
 
 def calculate_bundle_price(products):
-    """번들 가격 계산"""
+    """Calculate bundle price"""
     total_price = sum(get_product_price(product) for product in products)
     discount = get_bundle_discount(len(products))
     return total_price * (1 - discount)
@@ -360,40 +393,40 @@ def calculate_bundle_price(products):
 @common_routes.route('/subscription/subscribe', methods=['POST'])
 @require_auth  
 async def subscribe():
-    """구독 신청 API"""
-    user_id = request.user_id
+    """Subscription application API"""
+    user_id = g.user_id
     data = await request.json
     
     if not data or not data.get('plan_id'):
-        return error_response("구독 상품 ID가 필요합니다", 400)
+        return error_response("Subscription product ID required", 400)
     
     plan_id = data.get('plan_id')
     
-    # 번들 구독인 경우
+    # For bundle subscription
     if plan_id.startswith('bundle_'):
         if not data.get('products') or not isinstance(data.get('products'), list):
-            return error_response("번들 구독에는 상품 목록이 필요합니다", 400)
+            return error_response("Bundle subscription requires product list", 400)
         
         products = data.get('products')
         bundle_type = plan_id.split('_')[1]
         
-        # 번들 유형에 따른 상품 개수 검증
+        # Validate product count based on bundle type
         if bundle_type == "2" and len(products) != 2:
-            return error_response("2개 선택 패키지는 정확히 2개의 상품을 선택해야 합니다", 400)
+            return error_response("2 Product Bundle requires exactly 2 products", 400)
         elif bundle_type == "3" and len(products) != 3:
-            return error_response("3개 선택 패키지는 정확히 3개의 상품을 선택해야 합니다", 400)
+            return error_response("3 Product Bundle requires exactly 3 products", 400)
         elif bundle_type == "all" and len(products) != 4:
-            return error_response("올인원 패키지는 모든 상품을 포함해야 합니다", 400)
+            return error_response("All-in-One Package requires all products", 400)
         
-        # 결제 처리 (예시)
-        # 실제로는 결제 서비스와 연동
+        # Payment processing (example)
+        # In reality, this would integrate with payment service
         payment_id = "payment_" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
         bundle_price = calculate_bundle_price(products)
         
-        # 사용자의 구독 정보 업데이트
+        # Update user's subscription information
         db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
         
-        # 각 상품별로 Subscription 모델에 구독 정보 생성
+        # Create subscription information in Subscription model for each product
         subscription_ids = []
         for product in products:
             subscription_data = {
@@ -404,18 +437,18 @@ async def subscribe():
                 "payment_id": payment_id,
                 "status": "active",
                 "start_date": datetime.utcnow(),
-                "end_date": None,  # 월 구독의 경우 None
-                "price": bundle_price / len(products),  # 번들 가격을 상품 수로 나눔
+                "end_date": None,  # None for monthly subscription
+                "price": bundle_price / len(products),  # Divide bundle price by product count
                 "discount_applied": get_bundle_discount(len(products))
             }
             
             subscription_id = await Subscription.create(db, subscription_data)
             subscription_ids.append(subscription_id)
             
-            # User 모델에도 간단한 정보 저장
+            # Also store simple information in User model
             await User.add_subscription(db, user_id, product)
         
-        # 이벤트 발행
+        # Publish event
         await current_app.event_bus.publish("subscription_created", {
             "user_id": user_id,
             "subscription_ids": subscription_ids,
@@ -433,19 +466,19 @@ async def subscribe():
             "subscription_ids": subscription_ids,
             "total_price": bundle_price,
             "discount_applied": get_bundle_discount(len(products))
-        }, "번들 구독이 성공적으로 처리되었습니다", 201)
+        }, "Bundle subscription processed successfully", 201)
     
-    # 단일 상품 구독인 경우
+    # For single product subscription
     else:
-        # 결제 처리 (예시)
-        # 실제로는 결제 서비스와 연동
+        # Payment processing (example)
+        # In reality, this would integrate with payment service
         payment_id = "payment_" + datetime.utcnow().strftime("%Y%m%d%H%M%S")
         product_price = get_product_price(plan_id)
         
-        # 사용자의 구독 정보 업데이트
+        # Update user's subscription information
         db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
         
-        # Subscription 모델로 상세 정보 저장
+        # Store detailed information in Subscription model
         subscription_data = {
             "user_id": user_id,
             "product": plan_id,
@@ -461,10 +494,10 @@ async def subscribe():
         
         subscription_id = await Subscription.create(db, subscription_data)
         
-        # User 모델에도 간단한 정보 저장
+        # Also store simple information in User model
         await User.add_subscription(db, user_id, plan_id)
         
-        # 이벤트 발행
+        # Publish event
         await current_app.event_bus.publish("subscription_created", {
             "user_id": user_id,
             "subscription_id": subscription_id,
@@ -479,18 +512,18 @@ async def subscribe():
             "payment_id": payment_id,
             "subscription_id": subscription_id,
             "price": product_price
-        }, "구독이 성공적으로 처리되었습니다", 201)
+        }, "Subscription processed successfully", 201)
 
 @common_routes.route('/subscription/status', methods=['GET'])
 @require_auth  
 async def get_subscription_status():
-    """사용자 구독 상태 조회 API"""
-    user_id = request.user_id
+    """User subscription status API"""
+    user_id = g.user_id
     
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     subscriptions = await Subscription.find_active_by_user(db, user_id)
     
-    # 구독 정보 포맷팅
+    # Format subscription information
     formatted_subscriptions = []
     for sub in subscriptions:
         formatted_subscriptions.append({
@@ -508,34 +541,34 @@ async def get_subscription_status():
     return api_response({
         "subscriptions": formatted_subscriptions,
         "total_subscriptions": len(formatted_subscriptions)
-    }, "구독 상태를 성공적으로 조회했습니다")
+    }, "Subscription status retrieved successfully")
 
 @common_routes.route('/subscription/cancel', methods=['POST'])
 @require_auth  
 async def cancel_subscription():
-    """구독 취소 API"""
-    user_id = request.user_id
+    """Subscription cancellation API"""
+    user_id = g.user_id
     data = await request.json
     
     subscription_id = data.get('subscription_id')
     if not subscription_id:
-        return error_response("구독 ID가 필요합니다", 400)
+        return error_response("Subscription ID required", 400)
     
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     
-    # 구독 소유권 확인
+    # Verify subscription ownership
     subscription = await Subscription.find_by_id(db, subscription_id)
     if not subscription:
-        return error_response("구독을 찾을 수 없습니다", 404)
+        return error_response("Subscription not found", 404)
     
     if str(subscription.get("user_id")) != user_id:
-        return error_response("구독 취소 권한이 없습니다", 403)
+        return error_response("No permission to cancel subscription", 403)
     
-    # 구독 취소 처리
+    # Process subscription cancellation
     success = await Subscription.cancel(db, subscription_id)
     
     if success:
-        # 이벤트 발행
+        # Publish event
         await current_app.event_bus.publish("subscription_cancelled", {
             "user_id": user_id,
             "subscription_id": subscription_id,
@@ -547,29 +580,29 @@ async def cancel_subscription():
             "subscription_id": subscription_id,
             "cancelled": True,
             "cancelled_at": datetime.utcnow().isoformat()
-        }, "구독이 성공적으로 취소되었습니다")
+        }, "Subscription cancelled successfully")
     else:
-        return error_response("구독 취소에 실패했습니다", 500)
+        return error_response("Subscription cancellation failed", 500)
 
 @common_routes.route('/subscription/history', methods=['GET'])
 @require_auth  
 async def get_subscription_history():
-    """구독 히스토리 조회 API"""
-    user_id = request.user_id
+    """Subscription history API"""
+    user_id = g.user_id
     
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
     
-    # 모든 구독 히스토리 조회 (활성/비활성 포함)
+    # Get all subscription history (active/inactive included)
     from bson.objectid import ObjectId
     pipeline = [
         {"$match": {"user_id": ObjectId(user_id)}},
         {"$sort": {"start_date": -1}},
-        {"$limit": 50}  # 최근 50개로 제한
+        {"$limit": 50}  # Limit to recent 50
     ]
     
     subscriptions = await db[Subscription.collection_name].aggregate(pipeline).to_list(length=None)
     
-    # 구독 히스토리 포맷팅
+    # Format subscription history
     formatted_history = []
     for sub in subscriptions:
         formatted_history.append({
@@ -588,19 +621,19 @@ async def get_subscription_history():
     return api_response({
         "history": formatted_history,
         "total_records": len(formatted_history)
-    }, "구독 히스토리를 성공적으로 조회했습니다")
+    }, "Subscription history retrieved successfully")
 
 
 @common_routes.route('/subscription/my-subscriptions', methods=['GET'])
 @require_auth
 async def get_my_subscriptions():
-    """내 구독 목록 조회 API"""
-    user_id = request.user_id
-
+    """My subscriptions list API"""
+    user_id = g.user_id
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
+    
     subscriptions = await Subscription.find_active_by_user(db, user_id)
-
     formatted_subscriptions = []
+
     for sub in subscriptions:
         formatted_subscriptions.append({
             "subscription_id": str(sub.get("_id")),
@@ -611,21 +644,21 @@ async def get_my_subscriptions():
             "amount": sub.get("price"),
             "started_date": sub.get("start_date").isoformat() if sub.get("start_date") else None,
             "end_date": sub.get("end_date").isoformat() if sub.get("end_date") else None,
-            "payment_method": "****1234",  # Simula, ajusta se tiver esse dado
-            "auto_renewal": True,  # Ajusta se tiver essa lógica no seu modelo
+            "payment_method": "****1234",  # Simulated, adjust if you have this data
+            "auto_renewal": True           # Adjust if you have this logic in your model
         })
 
     return api_response({
         "subscriptions": formatted_subscriptions,
         "total_subscriptions": len(formatted_subscriptions)
-    }, "구독 정보를 성공적으로 조회했습니다")
+    }, "Subscription information retrieved successfully.")
 
 @common_routes.route('/subscription/usage-stats', methods=['GET'])
 @require_auth
 async def get_usage_stats():
     print("🔍 Usage stats endpoint called")
-    """API para retornar dados de uso do usuário"""
-    user_id = request.user_id
+    """API to return user usage data"""
+    user_id = g.user_id
 
     db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
 
@@ -648,7 +681,7 @@ async def get_usage_stats():
             "total_requests": usage.get("total_requests", 0),
             "last_updated": usage.get("last_updated", datetime.utcnow().isoformat())
         }
-    }, "사용자 사용 통계를 성공적으로 조회했습니다")
+    }, "User usage statistics retrieved successfully")
 
 
 ##new routes
@@ -656,9 +689,9 @@ async def get_usage_stats():
 @require_auth
 async def check_level_up():
     """
-    레벨업 체크 API
+    Level up check API
     """
-    user_id = request.user_id
+    user_id = g.user_id
     
     try:
         data = await request.json
@@ -667,11 +700,11 @@ async def check_level_up():
         
         db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
         
-        # 사용자의 현재 게임화 정보 조회
+        # Get user's current gamification information
         gamification = await db["gamification"].find_one({"userId": ObjectId(user_id)})
         
         if not gamification:
-            # 게임화 데이터가 없으면 생성
+            # Create gamification data if it doesn't exist
             gamification_data = {
                 "userId": ObjectId(user_id),
                 "totalXP": gained_xp,
@@ -691,24 +724,24 @@ async def check_level_up():
                 "current_xp": gained_xp,
                 "xp_to_next_level": 100,
                 "achievements_unlocked": []
-            }, "레벨업 체크가 완료되었습니다")
+            }, "Level up check completed")
         
-        # 현재 레벨과 XP 계산
+        # Calculate current level and XP
         old_level = gamification.get("currentLevel", 1)
         total_xp = gamification.get("totalXP", 0) + gained_xp
         
-        # 레벨 계산 로직 (예: 100 XP마다 레벨업)
+        # Level calculation logic (example: level up every 100 XP)
         new_level = max(1, total_xp // 100 + 1)
         level_up = new_level > old_level
         
-        # XP 다음 레벨까지 필요한 양
+        # XP needed for next level
         xp_to_next_level = (new_level * 100) - total_xp
         
-        # 업적 체크
+        # Achievement check
         achievements_unlocked = []
         current_achievements = gamification.get("achievements", [])
         
-        # 레벨 기반 업적
+        # Level-based achievements
         if new_level >= 5 and "level_5" not in current_achievements:
             achievements_unlocked.append("level_5")
             current_achievements.append("level_5")
@@ -717,7 +750,7 @@ async def check_level_up():
             achievements_unlocked.append("level_10")
             current_achievements.append("level_10")
         
-        # 게임화 정보 업데이트
+        # Update gamification information
         update_data = {
             "totalXP": total_xp,
             "currentLevel": new_level,
@@ -731,7 +764,7 @@ async def check_level_up():
             {"$set": update_data}
         )
         
-        # 이벤트 발행 (레벨업 시)
+        # Publish event (when level up)
         if level_up:
             await current_app.event_bus.emit_level_up(user_id, new_level, old_level)
         
@@ -743,21 +776,21 @@ async def check_level_up():
             "gained_xp": gained_xp,
             "xp_to_next_level": xp_to_next_level,
             "achievements_unlocked": achievements_unlocked
-        }, "레벨업 체크가 완료되었습니다")
+        }, "Level up check completed")
         
     except Exception as e:
         print(f"❌ Error in level check: {str(e)}")
         import traceback
         traceback.print_exc()
-        return error_response("레벨업 체크 중 오류가 발생했습니다", 500)
+        return error_response("Error occurred during level check", 500)
 
 @common_routes.route('/level-check', methods=['GET'])
 @require_auth
 async def get_level_info():
     """
-    현재 레벨 정보 조회 API
+    Current level information API
     """
-    user_id = request.user_id
+    user_id = g.user_id
     
     try:
         db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
@@ -769,7 +802,7 @@ async def get_level_info():
                 "current_xp": 0,
                 "xp_to_next_level": 100,
                 "total_xp": 0
-            }, "레벨 정보를 조회했습니다")
+            }, "Level information retrieved")
         
         current_level = gamification.get("currentLevel", 1)
         total_xp = gamification.get("totalXP", 0)
@@ -781,8 +814,34 @@ async def get_level_info():
             "xp_to_next_level": max(0, xp_to_next_level),
             "total_xp": total_xp,
             "achievements": gamification.get("achievements", [])
-        }, "레벨 정보를 성공적으로 조회했습니다")
+        }, "Level information retrieved successfully")
         
     except Exception as e:
         print(f"❌ Error fetching level info: {str(e)}")
-        return error_response("레벨 정보 조회 중 오류가 발생했습니다", 500)
+        return error_response("Error occurred while fetching level information", 500)
+    
+@common_routes.route('/subscription/debug', methods=['GET'])
+@require_auth
+async def debug_subscriptions():
+    """Debug endpoint to view all subscriptions"""
+    user_id = g.user_id
+    db = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
+    
+    # Get ALL user subscriptions
+    from bson.objectid import ObjectId
+    all_subs = await db["subscriptions"].find({
+        "user_id": ObjectId(user_id)
+    }).to_list(length=None)
+    
+    return api_response({
+        "user_id": user_id,
+        "total_subscriptions": len(all_subs),
+        "all_subscriptions": [
+            {
+                "product": sub.get("product"),
+                "status": sub.get("status"),
+                "start_date": sub.get("start_date"),
+                "end_date": sub.get("end_date")
+            } for sub in all_subs
+        ]
+    }, "Debug info")

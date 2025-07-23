@@ -3,40 +3,40 @@ import apiClient from '../api/index.js';
 import { SUPPORTED_LANGUAGES, TRANSLATION_SERVICE_MAPPING } from '../shared/constants/languages.js';
 
 /**
- * Google Translate 서비스 (단순화 버전)
- * 백엔드 translation_service.py와 연동
- * 실시간 번역 시스템을 위한 최적화
+ * Google Translate Service (simplified version)
+ * Integrated with backend translation_service.py
+ * Optimized for real-time translation system
  */
 class GoogleTranslateService {
   constructor() {
     this.cache = new Map();
-    this.maxCacheSize = 500; // 캐시 크기 감소
-    this.requestQueue = new Map(); // 중복 요청 방지
+    this.maxCacheSize = 500; // Reduced cache size
+    this.requestQueue = new Map(); // Prevent duplicate requests
   }
 
   /**
-   * 단일 텍스트 번역
+   * Single text translation
    */
   async translateText(text, targetLanguage, sourceLanguage = 'ko') {
-    // 입력 검증
+    // Input validation
     if (!text || !text.trim()) return '';
     if (sourceLanguage === targetLanguage) return text;
     if (!SUPPORTED_LANGUAGES[targetLanguage]) {
-      throw new Error(`지원하지 않는 언어입니다: ${targetLanguage}`);
+      throw new Error(`Unsupported language: ${targetLanguage}`);
     }
 
-    // 캐시 확인
+    // Check cache
     const cacheKey = `${sourceLanguage}-${targetLanguage}-${text.trim()}`;
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey);
     }
 
-    // 중복 요청 방지
+    // Prevent duplicate requests
     if (this.requestQueue.has(cacheKey)) {
       return this.requestQueue.get(cacheKey);
     }
 
-    // 번역 요청
+    // Translation request
     const translatePromise = this._performTranslation(text, targetLanguage, sourceLanguage);
     this.requestQueue.set(cacheKey, translatePromise);
 
@@ -52,13 +52,13 @@ class GoogleTranslateService {
   }
 
   /**
-   * 여러 텍스트 일괄 번역
+   * Batch translation for multiple texts
    */
   async translateMultiple(texts, targetLanguage, sourceLanguage = 'ko') {
     if (!texts || texts.length === 0) return [];
     if (sourceLanguage === targetLanguage) return texts;
 
-    // 캐시된 항목과 번역 필요한 항목 분리
+    // Separate cached items and items needing translation
     const results = new Array(texts.length);
     const needTranslation = [];
     const indexMap = new Map();
@@ -78,7 +78,7 @@ class GoogleTranslateService {
       }
     });
 
-    // 번역이 필요한 텍스트가 있는 경우
+    // If there are texts needing translation
     if (needTranslation.length > 0) {
       try {
         const response = await apiClient.post('/common/translate-batch', {
@@ -95,14 +95,14 @@ class GoogleTranslateService {
           const originalIndex = indexMap.get(originalText);
           results[originalIndex] = translatedText;
 
-          // 캐시에 저장
+          // Save to cache
           const cacheKey = `${sourceLanguage}-${targetLanguage}-${originalText}`;
           this._manageCache(cacheKey, translatedText);
         });
       } catch (error) {
-        console.error('일괄 번역 오류:', error);
+        console.error('Batch translation error:', error);
         
-        // 실패한 항목은 원문으로 채우기
+        // Fill failed items with original text
         needTranslation.forEach((originalText) => {
           const originalIndex = indexMap.get(originalText);
           if (results[originalIndex] === undefined) {
@@ -116,7 +116,7 @@ class GoogleTranslateService {
   }
 
   /**
-   * UI 요소 번역
+   * UI elements translation
    */
   async translateUI(uiTexts, targetLanguage) {
     if (!uiTexts || typeof uiTexts !== 'object') {
@@ -125,26 +125,39 @@ class GoogleTranslateService {
 
     try {
       const response = await apiClient.post('/common/translate-ui', {
-        uiTexts,
-        target: TRANSLATION_SERVICE_MAPPING.google[targetLanguage] || targetLanguage
+        elements: uiTexts,
+        target_language: TRANSLATION_SERVICE_MAPPING.google[targetLanguage] || targetLanguage
       });
 
-      return response.data.data.translatedUI;
+      console.log('Backend /translate-ui response:', response);
+      console.log('Response data:', response.data);
+
+      // Safely access
+      const translatedElements = response?.data?.data?.translated_elements;
+      if (!translatedElements) {
+        console.warn('translated_elements field not found in response!');
+        return uiTexts;
+      }
+      return translatedElements;
     } catch (error) {
-      console.error('UI 번역 오류:', error);
-      return uiTexts; // 실패 시 원본 반환
+      console.error('UI translation error:', error);
+      if (error.response) {
+        console.error('Status:', error.response.status);
+        console.error('Data:', error.response.data);
+      }
+      return uiTexts;
     }
   }
 
   /**
-   * 언어 감지
+   * Language detection
    */
   async detectLanguage(text) {
     if (!text || text.trim().length === 0) {
-      return 'ko'; // 기본값
+      return 'ko'; // Default
     }
 
-    // 짧은 텍스트는 한국어로 가정
+    // Assume short texts are Korean
     if (text.trim().length < 3) {
       return 'ko';
     }
@@ -156,22 +169,22 @@ class GoogleTranslateService {
 
       const detected = response.data.data.detectedLanguage;
       
-      // 지원하지 않는 언어인 경우 한국어로 처리
+      // If unsupported language, default to Korean
       return SUPPORTED_LANGUAGES[detected] ? detected : 'ko';
     } catch (error) {
-      console.error('언어 감지 오류:', error);
-      return 'ko'; // 기본값 반환
+      console.error('Language detection error:', error);
+      return 'ko'; // Return default
     }
   }
 
   /**
-   * 실제 번역 수행 (private)
+   * Actual translation (private)
    */
   async _performTranslation(text, targetLanguage, sourceLanguage) {
     const response = await apiClient.post('/common/translate', {
       text: text.trim(),
-      source: TRANSLATION_SERVICE_MAPPING.google[sourceLanguage] || sourceLanguage,
-      target: TRANSLATION_SERVICE_MAPPING.google[targetLanguage] || targetLanguage,
+      source_language: TRANSLATION_SERVICE_MAPPING.google[sourceLanguage] || sourceLanguage,
+      target_language: TRANSLATION_SERVICE_MAPPING.google[targetLanguage] || targetLanguage,
       type: 'basic'
     });
 
@@ -179,12 +192,12 @@ class GoogleTranslateService {
   }
 
   /**
-   * 캐시 관리 (private)
+   * Cache management (private)
    */
   _manageCache(key, value) {
-    // 캐시 크기 제한
+    // Cache size limit
     if (this.cache.size >= this.maxCacheSize) {
-      // 가장 오래된 항목 삭제 (FIFO)
+      // Delete oldest item (FIFO)
       const firstKey = this.cache.keys().next().value;
       this.cache.delete(firstKey);
     }
@@ -193,14 +206,14 @@ class GoogleTranslateService {
   }
 
   /**
-   * 지원 언어 목록 조회
+   * Get supported languages list
    */
   getSupportedLanguages() {
     return { ...SUPPORTED_LANGUAGES };
   }
 
   /**
-   * 캐시 관리 메서드들
+   * Cache management methods
    */
   clearCache() {
     this.cache.clear();
@@ -216,7 +229,7 @@ class GoogleTranslateService {
   }
 
   /**
-   * 캐시 상태 조회
+   * Cache status info
    */
   getCacheStats() {
     return {
@@ -228,7 +241,7 @@ class GoogleTranslateService {
   }
 
   /**
-   * 특정 언어 쌍의 캐시된 번역 개수
+   * Count cached translations for specific language pair
    */
   getCachedTranslationCount(sourceLanguage, targetLanguage) {
     const prefix = `${sourceLanguage}-${targetLanguage}-`;
@@ -244,7 +257,7 @@ class GoogleTranslateService {
   }
 
   /**
-   * 캐시 예열 (자주 사용되는 텍스트 미리 번역)
+   * Preload cache (pre-translate frequently used texts)
    */
   async preloadCommonTranslations(commonTexts, targetLanguages) {
     const promises = [];
@@ -253,7 +266,7 @@ class GoogleTranslateService {
       for (const text of commonTexts) {
         promises.push(
           this.translateText(text, targetLanguage, 'ko').catch(error => {
-            console.warn(`예열 번역 실패 (${text} -> ${targetLanguage}):`, error);
+            console.warn(`Preload translation failed (${text} -> ${targetLanguage}):`, error);
           })
         );
       }
@@ -263,7 +276,7 @@ class GoogleTranslateService {
   }
 }
 
-// 싱글톤 인스턴스 생성
+// Singleton instance
 const googleTranslateService = new GoogleTranslateService();
 
 export default googleTranslateService;

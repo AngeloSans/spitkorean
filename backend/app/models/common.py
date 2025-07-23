@@ -34,6 +34,11 @@ class XPAction(Enum):
     MONTHLY_CHAMPION = "monthly_champion"             # 월간 챔피언
     FIRST_PERFECT_WEEK = "first_perfect_week"         # 첫 완벽한 주
     COMEBACK_HERO = "comeback_hero"                   # 복귀 영웅
+class ActivityType(Enum):
+    """사용자 활동 유형 Enum"""
+    TALK_CHAT = "talk_chat"
+    # Aqui você pode adicionar mais atividades no futuro
+
 
 
 class PyObjectId(ObjectId):
@@ -401,3 +406,19 @@ class Common:
         leaderboard = await cursor.to_list(length=None)
         
         return leaderboard
+    @classmethod
+    async def log_activity(cls, db, user_id, activity_type, source, metadata=None):
+        """사용자 활동 로그 저장"""
+        from bson.objectid import ObjectId
+        if isinstance(user_id, str):
+            user_id = ObjectId(user_id)
+
+        activity_logs_collection = db["activity_logs"]  # nome da collection de logs
+        log_data = {
+            "userId": user_id,
+            "activityType": activity_type,
+            "source": source,
+            "metadata": metadata or {},
+            "timestamp": datetime.utcnow()
+        }
+        await activity_logs_collection.insert_one(log_data)

@@ -1,4 +1,4 @@
-from quart import Blueprint, request, jsonify, current_app
+from quart import Blueprint, request, jsonify, current_app, g
 from bson.objectid import ObjectId
 import uuid
 import logging  # ✅ 추가
@@ -6,8 +6,10 @@ from datetime import datetime, timedelta  # ✅ timedelta도 추가
 from app.utils.response import api_response, error_response
 from app.services.gpt_service import GPTService
 from app.services.emotion_service import EmotionService
-from app.models.common import XPAction, Common
+from app.models.common import XPAction, Common, ActivityType
 from app.core.auth import require_auth
+from app.models.common import XPAction, Common
+
 
 
 # ✅ Logger 설정 추가
@@ -21,7 +23,7 @@ emotion_service = EmotionService()
 @talk_routes.route('/chat', methods=['POST'])
 @require_auth  # For production with auth
 async def chat():
-    user_id = request.user_id
+    user_id = g.user_id
     data = await request.json
     
     if not data or not data.get('message'):
@@ -155,7 +157,7 @@ async def chat():
 @talk_routes.route('/sessions', methods=['GET'])
 @require_auth  # For production with auth
 async def get_sessions():
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 채팅 세션 목록 가져오기
     chat_logs_collection = current_app.mongo_client[current_app.config["MONGO_DB_TALK"]].chat_logs
@@ -180,7 +182,7 @@ async def get_sessions():
 @talk_routes.route('/session/<session_id>', methods=['GET'])
 @require_auth  # For production with auth
 async def get_session(session_id):
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 특정 채팅 세션 가져오기
     chat_logs_collection = current_app.mongo_client[current_app.config["MONGO_DB_TALK"]].chat_logs
@@ -213,7 +215,7 @@ async def get_session(session_id):
 @talk_routes.route('/usage', methods=['GET'])
 @require_auth  # For production with auth
 async def get_usage():
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 남은 사용량 확인
     remaining = await current_app.usage_limiter.get_remaining(

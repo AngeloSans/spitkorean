@@ -1,4 +1,4 @@
-from quart import Blueprint, request, jsonify, current_app
+from quart import Blueprint, request, jsonify, current_app, g
 from bson.objectid import ObjectId
 import uuid
 from datetime import datetime, timedelta
@@ -17,7 +17,7 @@ gpt_service = GPTService()
 @require_auth  # For production with auth
 async def get_questions():
     """TOPIK 문제 조회 API"""
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 파라미터 확인
     level = request.args.get('level', '1')
@@ -141,7 +141,7 @@ async def get_questions():
 @require_auth  # For production with auth
 async def submit_answers():
     """테스트 답안 제출 API"""
-    user_id = request.user_id
+    user_id = g.user_id
     data = await request.json
     
     if not data or not data.get('test_id') or not data.get('answers'):
@@ -258,7 +258,7 @@ async def submit_answers():
 @require_auth  # For production with auth
 async def get_results():
     """테스트 결과 조회 API"""
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 구독 상태 확인
     db_users = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]
@@ -330,7 +330,7 @@ async def get_results():
 @require_auth  # For production with auth
 async def get_usage():
     """사용량 조회 API"""
-    user_id = request.user_id
+    user_id = g.user_id
     
     # 구독 상태 확인
     db_users = current_app.mongo_client[current_app.config.get("MONGO_DB_USERS")]

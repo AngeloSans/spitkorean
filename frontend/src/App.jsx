@@ -1,63 +1,91 @@
 import React, { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
+import { getAuthToken } from '@/utils/auth'
 
-// 커스텀 훅
+// Custom hook
 import { useAuth } from '@/hooks/useAuth'
 
-// 레이아웃 컴포넌트
+// Layout components
 import Sidebar from '@components/layout/Sidebar'
 import Footer from '@components/layout/Footer'
 
-// 페이지 컴포넌트
+// Page components
 import Home from '@pages/Home'
 import Login from '@pages/Login'
 import Register from '@pages/Register'
 import Dashboard from '@pages/Dashboard'
 
-// 상품별 페이지
+// Product-specific pages
 import TalkHome from '@pages/talk/TalkHome'
 import DramaHome from '@pages/drama/DramaHome'
 import TestHome from '@pages/test/TestHome'
 import JourneyHome from '@pages/journey/JourneyHome'
 
-// 구독 및 프로필 페이지
+// Subscription and profile pages
 import Plans from '@pages/subscription/Plans'
 import Checkout from '@pages/subscription/Checkout'
 import Profile from '@pages/profile/Profile'
 import Settings from '@pages/profile/Settings'
 
-// 기타 페이지
+// Other pages
 // Module not found error: The imported page/component does not exist or the import path is incorrect.
 // This causes the app to fail rendering and results in a blank page.
-//import Leaderboard from '@pages/Leaderboard'
-//import Progress from '@pages/Progress'
-//import Help from '@pages/Help'
+// import Leaderboard from '@pages/Leaderboard'
+// import Progress from '@pages/Progress'
+// import Help from '@pages/Help'
 
-// 인증 관련
-import { checkAuthStatus } from '@store/slices/authSlice'
+// Authentication related
 import ProtectedRoute from '@components/auth/ProtectedRoute'
 import LoadingSpinner from '@components/common/LoadingSpinner'
+import { loadInitialAuthState, checkAuthStatus } from '@/store/slices/authSlice'
 import { Check } from 'lucide-react'
+
 
 function App() {
   const dispatch = useDispatch()
-  const { isAuthenticated, isLoading, user } = useAuth()
   
-  // 사이드바 상태 관리
+  useEffect(() => {
+    // Check authentication status when the app loads
+    dispatch(checkAuthStatus())
+    
+    // Optionally check every X minutes
+    const interval = setInterval(() => {
+      dispatch(checkAuthStatus())
+    }, 5 * 60 * 1000) // every 5 minutes
+    
+    return () => clearInterval(interval)
+  }, [dispatch])
+  
+  const { isAuthenticated, isLoading, user } = useAuth()
+
+  useEffect(() => {
+    const token = getAuthToken()
+    const user = JSON.parse(localStorage.getItem('user'))
+
+    if (token && user) {
+      // Load initial Redux state with token and user
+      dispatch(loadInitialAuthState({ token, user }))
+    } else {
+      // If no token, check status with server
+      dispatch(checkAuthStatus())
+    }
+  }, [dispatch])
+  
+  // Sidebar state management
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
-    // 앱 시작 시 인증 상태 확인
+    // Check authentication status on app start
     dispatch(checkAuthStatus())
   }, [dispatch])
 
-  // 사이드바 토글 함수
+  // Sidebar toggle function
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
   }
 
-  // 로딩 중일 때
+  // While loading
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -66,16 +94,14 @@ function App() {
     )
   }
 
-  // 인증이 필요한 페이지 레이아웃
+  // Layout for authenticated (protected) pages
   const AuthenticatedLayout = ({ children }) => (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      
       <div className="flex flex-1">
         <Sidebar 
           collapsed={sidebarCollapsed} 
           onToggle={toggleSidebar}
         />
-        
         <main className={`flex-1 transition-all duration-300 ${
           sidebarCollapsed ? 'ml-16' : 'ml-64'
         }`}>
@@ -87,21 +113,19 @@ function App() {
     </div>
   )
 
-  // 공개 페이지 레이아웃
+  // Layout for public pages
   const PublicLayout = ({ children }) => (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      
       <main className="flex-1">
         {children}
       </main>
-      
       <Footer />
     </div>
   )
 
   return (
     <Routes>
-      {/* 공개 라우트 - 사이드바 없음 */}
+      {/* Public routes - no sidebar */}
       <Route path="/" element={
         <PublicLayout>
           <Home />
@@ -125,19 +149,22 @@ function App() {
           <Plans />
         </PublicLayout>
       } />
+      
       <Route path="/subscription/checkout" element={
         <PublicLayout>
           <Checkout />
         </PublicLayout> 
       } />
+      
       {/*
       <Route path="/help" element={
         <PublicLayout>
           <Help />
         </PublicLayout>
       } />
-      *}
-      {/* 보호된 라우트 - 사이드바 포함 */}
+      */}
+      
+      {/* Protected routes - with sidebar */}
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -161,6 +188,7 @@ function App() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       } />
+      
       <Route path="/profile/edit" element={
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -168,6 +196,7 @@ function App() {
           </AuthenticatedLayout>
         </ProtectedRoute>
       } />
+      
       {/*
       <Route path="/leaderboard" element={
         <ProtectedRoute>
@@ -177,6 +206,7 @@ function App() {
         </ProtectedRoute>
       } />
       */}
+      
       {/*
       <Route path="/progress" element={
         <ProtectedRoute>
@@ -186,7 +216,8 @@ function App() {
         </ProtectedRoute>
       } />
       */}
-      {/* 상품별 라우트 - 사이드바 포함 */}
+      
+      {/* Product-specific routes - with sidebar */}
       <Route path="/talk/*" element={
         <ProtectedRoute>
           <AuthenticatedLayout>
@@ -219,7 +250,7 @@ function App() {
         </ProtectedRoute>
       } />
       
-      {/* 404 처리 */}
+      {/* Handle 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

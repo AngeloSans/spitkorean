@@ -7,9 +7,10 @@ import jwt
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
-from quart import request, current_app
+from quart import request, current_app, g
 from app.utils.response import error_response
 from app.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,29 +61,29 @@ class AuthManager:
             return None
 
     def require_auth(self, f):
-        """인증 데코레이터 (클래스 내부 버전)"""
         @wraps(f)
         async def decorated_function(*args, **kwargs):
             auth_header = request.headers.get('Authorization')
+            logger.info(f"Authorization header: {auth_header}")  # Log the header
             if not auth_header:
                 return error_response("인증 토큰이 필요합니다", 401)
 
             token = auth_header
             if token.lower().startswith('bearer '):
                 token = token[7:]
+            logger.info(f"Extracted token: {token}")  # Log the extracted token
 
             user_id = self.verify_token(token)
             if not user_id:
                 return error_response("유효하지 않은 토큰입니다", 401)
 
-            request.user_id = user_id
+            g.user_id = user_id
             return await f(*args, **kwargs)
 
         return decorated_function
-
     def get_current_user_id(self):
         """현재 요청의 사용자 ID 반환"""
-        return getattr(request, 'user_id', None)
+        return getattr(g, 'user_id', None)
 
     def refresh_token(self, token):
         """토큰 갱신"""
@@ -115,7 +116,7 @@ def require_auth(f):
         if not user_id:
             return error_response("유효하지 않은 토큰입니다", 401)
 
-        request.user_id = user_id
+        g.user_id = user_id
         return await f(*args, **kwargs)
 
     return decorated_function

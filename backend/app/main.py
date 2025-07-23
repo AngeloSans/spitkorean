@@ -67,7 +67,7 @@ async def setup_clients():
             app.redis_client = None
         
         # 핵심 서비스 객체 초기화
-        app.auth_manager = AuthManager(app.config["SECRET_KEY"])
+        app.auth_manager = AuthManager()
         app.usage_limiter = UsageLimiter(app.redis_client)
         app.cache_manager = CacheManager(app.redis_client)
         app.event_bus = EventBus(app.redis_client)

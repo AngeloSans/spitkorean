@@ -388,7 +388,7 @@ const SpeedControl = ({
       </div>
 
       {/* 스타일 추가 */}
-      <style jsx>{`
+      <style >{`
         .slider {
           -webkit-appearance: none;
           appearance: none;

@@ -686,6 +686,7 @@ export const {
 
 // 셀렉터들
 export const selectTalk = (state) => state.talk
+export const selectTalkLoading = (state) => state.talk.loading
 export const selectCurrentSession = (state) => state.talk.currentSession
 export const selectMessages = (state) => state.talk.currentSession.messages
 export const selectSessions = (state) => state.talk.sessions

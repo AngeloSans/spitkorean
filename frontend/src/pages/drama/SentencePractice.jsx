@@ -116,6 +116,7 @@ const SentencePractice = () => {
       
       // 문장 데이터 로드
       await dispatch(fetchDramaSentences({ level: userLevel })).unwrap();
+      console.log("Resultado da busca de frases:", result);
     } catch (err) {
       console.error('Failed to initialize practice session:', err);
     }

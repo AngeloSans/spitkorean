@@ -209,13 +209,13 @@ const AuthLayout = ({
       icon: <BookOpen className="w-6 h-6 text-green-600" />,
       title: 'TOPIK 시험 대비',
       desc: '체계적인 시험 준비 시스템',
-      color: 'green'
+      color: 'orange' 
     },
     {
       icon: <Map className="w-6 h-6 text-orange-600" />,
       title: '발음 교정',
       desc: '한글부터 정확한 발음까지',
-      color: 'orange'
+      color: 'green'
     }
   ]
 
